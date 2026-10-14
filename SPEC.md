@@ -1,8 +1,8 @@
 # Picross Web — Specification
 
-Status: **v1 in progress**: 0.5.0 is live at
-<https://picross-web.pytrik.workers.dev>; the puzzle editor is done
-(unreleased); database puzzles (§1.3) are still to do. v1 is finished when §1.4 is met, and ships as
+Status: **v1 in progress**: 0.6.0 is live at
+<https://picross-web.pytrik.workers.dev>; database puzzles (§1.3) are
+still to do. v1 is finished when §1.4 is met, and ships as
 **1.0.0**.
 This document is the source of truth for behaviour. When the code and this spec disagree, one of them is a bug.
 
@@ -31,7 +31,7 @@ Implemented (0.5.0):
   (§8).
 - Hint (§6.9), difficulty rating with a target difficulty (§5.5), and
   picture-like grid styles (§5.6), added in 0.5.0.
-- Puzzle editor (§6.10), done, not yet released.
+- Puzzle editor (§6.10), added in 0.6.0.
 
 Still to do: database puzzles (§1.3). With those,
 everything except database puzzles keeps working offline from the single
@@ -56,7 +56,7 @@ Each feature gets its own spec section before work starts. That section fills
 in the design; the requirements below are fixed. Every feature MUST be covered
 by unit and e2e tests (§10.7) and documented in README.md.
 
-Done in 0.5.0: Hint, difficulty rating, picture-like grids. Done since:
+Done in 0.5.0: Hint, difficulty rating, picture-like grids; in 0.6.0:
 puzzle editor. (Their requirements are kept below for reference.) To do:
 database puzzles.
 
