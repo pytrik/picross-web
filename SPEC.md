@@ -1,15 +1,23 @@
 # Picross Web — Specification
 
-Status: **v1, implemented** (live at <https://picross-web.pytrik.workers.dev>).
+Status: **v1 in progress**: 0.4.0 is live at
+<https://picross-web.pytrik.workers.dev>; the features in §1.3 are still to
+do. v1 is finished when §1.4 is met, and ships as **1.0.0**.
 This document is the source of truth for behaviour. When the code and this spec disagree, one of them is a bug.
 
 Keywords **MUST**, **SHOULD**, **MAY** are used in the RFC 2119 sense.
+
+"v1" in this document is the product release 1.0.0. It is unrelated to the
+hash format version (`p=1.`, §4.2) and the progress record version (`"v": 1`,
+§7.1), which stay at 1 for all of v1.
 
 ---
 
 ## 1. Scope
 
-### 1.1 v1 (this spec)
+### 1.1 v1
+
+Implemented (0.4.0):
 
 - Randomly generated, multi-color nonogram ("picross") puzzles.
 - Every generated puzzle has a **unique solution reachable by line logic alone**
@@ -18,27 +26,118 @@ Keywords **MUST**, **SHOULD**, **MAY** are used in the RFC 2119 sense.
 - Player progress lives in `localStorage` → survives reloads.
 - Shipped as **one self-contained `index.html`** (no external requests), hosted
   on Cloudflare Workers static assets.
+- Assists (§6.5), zoom & pan (§6.7), recent puzzles (§6.8), options and themes
+  (§8).
 
-### 1.2 Explicitly out of scope for v1 (but designed for)
+Still to do: the features in §1.3. With those, everything except database
+puzzles keeps working offline from the single file; database puzzles and the
+Library need the network (§11).
 
-- Loading puzzles from a backend database (see §11).
-- Accounts, leaderboards, cloud sync.
-- Hand-authored puzzle editor.
+### 1.2 Out of scope for v1
 
-### 1.3 Planned (not yet specified)
+- Accounts, user profiles, leaderboards, and cloud sync of progress. Progress
+  stays in the browser (§7).
+- Player-published puzzles: there is no write API. Database puzzles are curated
+  by the maintainer in the repository (§1.3), and the editor shares `p=` links
+  only. So no moderation, reporting, comments, or ratings either.
+- Other ideas considered and not chosen for v1 (MAY be revisited after 1.0.0):
+  daily puzzle, statistics, export/import of progress, solved-picture export,
+  "beat my time" links, installable PWA / service worker (it would break the
+  single-file build), haptics, win animation, and a fill-only-unknown drag
+  modifier.
 
-Agreed for a later version; each gets a proper spec section before work starts.
+### 1.3 Remaining v1 features
 
-- **Hint**: reveal one cell that line logic forces next (reusing §5.3), with
-  its line highlighted; hints used are shown on win.
-- **Difficulty rating**: grade puzzles by solver effort (Easy/Medium/Hard),
-  shown in the toolbar; optional target difficulty in the generator, within
-  the 10 s budget.
-- **Picture-like grids**: optional symmetry / smoothing in the seed step so
-  puzzles look less like noise.
-- **Puzzle editor**: draw a grid, check it is line-solvable (§5.3), share as a
-  `p=` link.
-- **Database puzzles**: `#id=` links backed by a Worker + D1 (§11).
+Each feature gets its own spec section before work starts. That section fills
+in the design; the requirements below are fixed. Every feature MUST be covered
+by unit and e2e tests (§10.7) and documented in README.md.
+
+**Hint**
+
+- A **Hint** toolbar button (and a key) fills in one still-unknown cell whose
+  value line logic forces from the current marks (§5.3), with its value (color
+  or X), and highlights the line that forces it. The hint is one undo step.
+- Hints MUST NOT deduce from wrong marks: if the board contradicts the
+  solution, the hint reports that instead (pointing out at least one wrong
+  cell) and makes no change.
+- If line logic can't determine any further cell (only possible for a
+  non-line-solvable puzzle), the hint says so.
+- Hints used are counted, persisted with the progress (§7.1), and shown on
+  win next to checks. Disabled on a solved board.
+
+**Difficulty rating**
+
+- Every puzzle gets a rating (Easy / Medium / Hard) computed deterministically
+  from its definition by measuring line-solver effort; the metric and
+  thresholds are defined in the feature's section. A puzzle that line logic
+  can't fully solve shows as "Unrated".
+- The rating is derived, never stored in the hash, so a shared link shows the
+  same rating everywhere. It is shown in the toolbar, the win dialog, Recent
+  puzzles (§6.8) and the Library.
+- The New puzzle dialog gets a target difficulty (Any / Easy / Medium / Hard,
+  default Any) that the generator meets, within the 10 s budget (§5.2) at the
+  worst case. On timeout the existing error + **Retry** applies.
+
+**Picture-like grids**
+
+- The New puzzle dialog gets a style option: Random (today's behaviour,
+  default), Symmetric (mirror symmetry), and Smooth (fewer isolated cells,
+  more blob-like shapes).
+- Every style MUST keep all generator guarantees (§5.2): unique, line-solvable,
+  every color used, roughly the chosen density, and the 10 s budget at the
+  worst case. If repairs must break the style, uniqueness wins.
+
+**Puzzle editor**
+
+- **Editor…** opens a mode for drawing a puzzle: size 5–30 × 5–30, 1–6 colors
+  with the same palette presets and overrides as §5.4, and the same drawing
+  input as play (§6.1–§6.4, incl. undo/redo, drag, zoom).
+- Clues update live as the grid is drawn.
+- **Check** runs the line solver (§5.3) and shows whether the puzzle is
+  line-solvable; if not, it highlights the cells line logic can't determine.
+- **Play** / **Share** produce a `p=` link, but only for a puzzle that passes
+  validation (§4.1) **and** is line-solvable, so every `p=` puzzle the app
+  produces keeps the §1.1 guarantee.
+- One unfinished draft is kept in `localStorage`. The editor works offline.
+
+**Database puzzles**
+
+- Curated puzzles live in the repository (format defined in §11), each with an
+  id and a title. CI MUST validate every one (§4.1) and require it to be
+  line-solvable. The deploy workflow (§10.6) loads them into D1; nothing else
+  writes to the database.
+- A Worker in the same project serves a **read-only** API: a list of puzzles
+  (id, title, size, colors, rating) and a single puzzle by id (§11). Static
+  assets are still the single `index.html`.
+- `#id=<id>` links open a database puzzle (§4.3, §11) and show its title.
+  Progress is stored under `id:<id>` (§7.2). Recent puzzles (§6.8) lists them
+  too, so their definitions are cached locally.
+- A **Library…** dialog lists the database puzzles with title, size, colors,
+  rating, and the player's local status (not started / in progress / solved).
+- Offline, or when the API fails, `id=` links and the Library show a clear
+  notice; nothing else is affected.
+- Launch with a starter set of at least 10 curated puzzles.
+
+### 1.4 Definition of done for v1 (1.0.0)
+
+v1 is finished, and 1.0.0 is tagged, when all of these hold:
+
+1. Every feature in §1.3 is implemented and specified in its own section of
+   this document, and README.md describes it.
+2. `npm run check`, `npm test` and `npm run e2e` pass in CI, and each new e2e
+   test passes `--repeat-each 5` locally.
+3. The generator stays within its 10 s budget at the worst case: 30×30,
+   density 0.40, 6 colors, for every style and difficulty target.
+4. Compatibility: every `p=` link and every stored progress record created by
+   0.x still opens, with its progress.
+5. Offline: the release `index.html` opened from `file://` works for
+   everything except database puzzles and the Library, which show the offline
+   notice.
+6. Accessibility (§9) covers all new UI: keyboard reachable, labelled, nothing
+   conveyed by color alone.
+7. The database holds the curated starter set, served by the Worker, and
+   deployed only from GitHub Actions.
+8. This status line reads "v1, complete", and `package.json` is at 1.0.0.
 
 ---
 
@@ -106,13 +205,13 @@ interface PuzzleDef {
   height: number;         // 5..30
   palette: string[];      // 1..6 entries, lowercase "#rrggbb"
   cells: Uint8Array;      // width*height, row-major, values 0..palette.length
-  // Reserved for future DB puzzles (§11); not encoded in v1 hashes.
+  // Database puzzles only (§11); never encoded in `p=` hashes.
   id?: string;
   title?: string;
 }
 ```
 
-Validation (applies to hash decode and any future source):
+Validation (applies to hash decode and every other source, incl. §11):
 
 - `width`, `height` integers in `[5, 30]`.
 - `palette.length` in `[1, 6]`, each matching `/^#[0-9a-f]{6}$/`, no duplicates.
@@ -123,7 +222,7 @@ Validation (applies to hash decode and any future source):
 
 Invalid definitions are rejected (§4.4).
 
-### 4.2 Hash format (v1)
+### 4.2 Hash format (format version 1)
 
 ```
 #p=1.<W>x<H>.<PALETTE>.<DATA>
@@ -219,7 +318,8 @@ Standard multi-color line solver:
 - Contradiction (empty set) means the clues are inconsistent → treat as a
   generator bug (assert).
 
-The same solver is reused by tests and MAY later back a "hint" feature.
+The same solver is reused by tests, line errors (§6.5), and the planned hint,
+difficulty rating and editor (§1.3).
 
 ### 5.4 Palette presets
 
@@ -390,14 +490,14 @@ picross:p:<puzzleKey>  →  JSON
 }
 ```
 
-`hash` was added after v1 shipped; readers MUST accept records without it.
+`hash` was added in 0.4.0; readers MUST accept records without it.
 `board` packing uses `bits = ceil(log2(N + 2))`. Writes are debounced (~300 ms)
 and flushed on `pagehide`/`visibilitychange:hidden`.
 
 ### 7.2 Puzzle key
 
 `puzzleKey` = FNV-1a 64-bit hex of the canonical `p=` hash string (without
-`#`). For future DB puzzles: `id:<id>`.
+`#`). For database puzzles (§11): `id:<id>`.
 
 ### 7.3 Index & LRU
 
@@ -545,7 +645,7 @@ thread. No extra files are emitted.
 }
 ```
 
-No Worker script in v1 (assets-only). Hash-based routing means no SPA fallback
+No Worker script yet (assets-only); database puzzles (§1.3) add one. Hash-based routing means no SPA fallback
 is needed. Served at <https://picross-web.pytrik.workers.dev>; a custom domain
 MAY be added later.
 
@@ -605,20 +705,21 @@ Version kept in sync in `package.json`, the header UI, and the git tag
 
 ---
 
-## 11. Future: database puzzles (design constraints for v1)
+## 11. Database puzzles (to be specified; design constraints so far)
 
-v1 code MUST keep these doors open:
+Requirements are in §1.3. Until this section is written in full, the code
+keeps these doors open:
 
-- **`PuzzleSource` abstraction**: `resolve(hash): Promise<PuzzleDef>`. v1
-  implements `p=` (local decode). Later, `id=` fetches
+- **`PuzzleSource` abstraction**: `resolve(hash): Promise<PuzzleDef>`. Today
+  only `p=` is implemented (local decode). `id=` will fetch
   `GET /api/puzzles/<id>` from a Worker (same project, `main` added to
   `wrangler.jsonc`, D1 for storage) returning
   `{ id, title, width, height, palette, cells: "<base64url as §4.2>" }`.
 - The palette is part of the definition, so DB puzzles carry their own colors.
 - The puzzle key scheme already distinguishes `id:<id>`.
-- `resolve` is async from day one, even though v1 is synchronous inside.
-- Hand-made DB puzzles are not guaranteed to be unique; the win check (§3.2)
-  SHOULD then fall back to "all clues satisfied". The win check is therefore
-  implemented as clue satisfaction, which is equivalent for unique puzzles.
+- `resolve` is async from day one, even though `p=` is synchronous inside.
+- Curated puzzles must be line-solvable (§1.3), hence unique. The win check
+  (§3.2) is implemented as clue satisfaction anyway, which is equivalent for
+  unique puzzles and safe if that ever changes.
 - The single-file build stays usable offline for `p=` links; `id=` links
   need the network.

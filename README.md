@@ -25,7 +25,9 @@ no guessing.
 **Play it at <https://picross-web.pytrik.workers.dev>**, or download the
 offline `index.html` from the [latest release](https://github.com/pytrik/picross-web/releases/latest).
 
-Full behaviour is specified in [SPEC.md](SPEC.md).
+Full behaviour is specified in [SPEC.md](SPEC.md). The road to 1.0.0 (hints,
+difficulty ratings, picture-like puzzles, a puzzle editor and a curated puzzle
+library) is in its §1.3, with the definition of done in §1.4.
 
 ## How to play
 
