@@ -49,8 +49,8 @@ Drags stay on the row or column they start in, and only change cells that
 were in the same state as the first one, so a drag never wipes out other work.
 While dragging, a small counter shows how many cells the drag spans.
 Dimmed clue numbers are runs your marks already complete; a red clue means
-that line's marks can no longer fit it. **Options…** turns that warning off
-and can switch on auto-X, which marks the rest of a line empty as soon as its
+that line's marks can no longer fit it. **Options…** sets the theme
+(Auto / Light / Dark), turns that warning off, and can switch on auto-X, which marks the rest of a line empty as soon as its
 filled cells match the clue.
 
 ## Development

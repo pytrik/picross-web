@@ -177,3 +177,18 @@ test('mobile: pinch zooms without drawing, one finger on clues pans @mobile', as
   expect(await wrap.evaluate((el) => el.scrollLeft)).toBeGreaterThan(startLeft + 50);
   expect(await boardValues(page)).toEqual(new Array(400).fill(0));
 });
+
+test('theme is chosen in Options and persists', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'light' });
+  await gotoPuzzle(page, SMALL);
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await page.getByRole('button', { name: 'Options…' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Options' });
+  await expect(dialog.getByRole('radio', { name: 'Auto' })).toBeChecked();
+  await dialog.getByRole('radio', { name: 'Dark' }).check();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await dialog.getByRole('button', { name: 'Done' }).click();
+  await page.reload();
+  await expect(cells(page)).toHaveCount(25);
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+});

@@ -12,7 +12,7 @@
   import { MARK_X } from './lib/puzzle/types.ts';
   import { fromDefinition, resolvePuzzle, type LoadedPuzzle } from './lib/source/index.ts';
   import { Game } from './lib/state/game.svelte.ts';
-  import { effectivePalette, loadSettings, saveSettings, type Settings, type Theme } from './lib/state/settings.ts';
+  import { effectivePalette, loadSettings, saveSettings, type Settings } from './lib/state/settings.ts';
   import { defaultStorage } from './lib/state/storage.ts';
   import { formatTime, paletteNames } from './lib/ui/format.ts';
   import { ZOOM_STEP } from './lib/ui/zoom.ts';
@@ -47,8 +47,6 @@
   $effect(() => {
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
   });
-  const THEMES: Theme[] = ['system', 'light', 'dark'];
-  const themeLabel: Record<Theme, string> = { system: 'Auto', light: 'Light', dark: 'Dark' };
 
   // --- toast -----------------------------------------------------------------
 
@@ -264,13 +262,6 @@
     <button class="secondary" onclick={openRecent}>Recent…</button>
     <button class="secondary" onclick={share} disabled={!game}>Share</button>
     <button class="secondary" onclick={() => optionsDialog.open()}>Options…</button>
-    <button
-      class="secondary"
-      title="Theme"
-      onclick={() => (settings.theme = THEMES[(THEMES.indexOf(settings.theme) + 1) % THEMES.length]!)}
-    >
-      {themeLabel[settings.theme]}
-    </button>
   </nav>
 </header>
 
@@ -374,7 +365,12 @@
 {#if toast}<div class="toast" role="status">{toast}</div>{/if}
 
 <NewPuzzleDialog bind:this={newDialog} {settings} onGenerate={generate} />
-<OptionsDialog bind:this={optionsDialog} bind:showErrors={settings.showErrors} bind:autoX={settings.autoX} />
+<OptionsDialog
+  bind:this={optionsDialog}
+  bind:theme={settings.theme}
+  bind:showErrors={settings.showErrors}
+  bind:autoX={settings.autoX}
+/>
 <RecentDialog
   bind:this={recentDialog}
   {storage}
@@ -456,6 +452,14 @@
     gap: 0.4rem;
     flex-wrap: wrap;
     align-items: center;
+  }
+
+  /* Keep the four header buttons on one row on phones. */
+  @media (max-width: 480px) {
+    nav button {
+      padding: 0.35rem 0.55rem;
+      font-size: 0.9rem;
+    }
   }
 
   .toolbar {

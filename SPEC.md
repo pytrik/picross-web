@@ -420,13 +420,12 @@ Unsolved boards with zero progress are not stored.
 ## 8. UI layout
 
 - **Header**: app name, version, **New puzzle…** (opens the dialog),
-  **Recent…** (§6.8), **Share**, **Options…**, theme toggle
-  (Auto / Light / Dark).
+  **Recent…** (§6.8), **Share**, **Options…**.
 - **New puzzle panel** (dialog): size presets + custom W/H, color count,
   palette preset, swatch overrides, density, **Generate**.
-- **Options** (dialog): checkboxes "Flag impossible lines" (`showErrors`) and
-  "Auto-X finished lines" (`autoX`) (§6.5). Changes apply immediately and
-  persist.
+- **Options** (dialog): theme radio buttons (Auto / Light / Dark), and
+  checkboxes "Flag impossible lines" (`showErrors`) and "Auto-X finished
+  lines" (`autoX`) (§6.5). Changes apply immediately and persist.
 - **Toolbar**: color swatches + X tool, undo, redo, check, restart, zoom
   −/+ (§6.7), timer, "Solved" badge.
 - **Board**: column clues on top (stacked bottom-aligned), row clues on the
@@ -434,7 +433,8 @@ Unsolved boards with zero progress are not stored.
 - Cell size is computed to fit the viewport (min 14 px, max 40 px), then
   multiplied by the zoom factor (§6.7). If the board doesn't fit, the board
   container scrolls (the page does not), with sticky clues.
-- Light/dark theme follows `prefers-color-scheme`, overridable and persisted.
+- Light/dark theme follows `prefers-color-scheme`, overridable in Options
+  and persisted.
   A tiny inline script in `<head>` applies it before first paint (no light
   flash for dark users); the app keeps it in sync afterwards.
 - Clue text color: the run's palette color; when contrast with the background
