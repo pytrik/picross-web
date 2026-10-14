@@ -2,12 +2,18 @@
   import { flushSync, onMount } from 'svelte';
   import type { LineRef } from '../lib/puzzle/hint.ts';
   import { MARK_X, UNKNOWN, type Run } from '../lib/puzzle/types.ts';
-  import { clickTarget, type Game } from '../lib/state/game.svelte.ts';
+  import type { BoardModel } from '../lib/state/board-model.ts';
+  import { clickTarget } from '../lib/state/game.svelte.ts';
   import { contrast, paletteNames, textOn } from '../lib/ui/format.ts';
   import { anchoredScroll, clampZoom, maxZoom } from '../lib/ui/zoom.ts';
 
   interface Props {
-    game: Game;
+    /** The puzzle being played, or the editor's draft (SPEC §6.10). */
+    game: BoardModel;
+    /** Editor mode: empty cells read "empty", clue space is reserved. */
+    editing?: boolean;
+    /** Cells line logic can't determine, after an editor Check (SPEC §6.10). */
+    undetermined?: ReadonlySet<number>;
     /** Active fill color (1..N). */
     activeColor: number;
     /** Touch/primary tool is "mark X" instead of fill. */
@@ -27,6 +33,8 @@
   }
   let {
     game,
+    editing = false,
+    undetermined = new Set(),
     activeColor,
     xMode,
     wrong,
@@ -53,8 +61,10 @@
   let viewH = $state(0);
   let top = $state(0);
 
-  const maxRowRuns = $derived(Math.max(1, ...game.clues.rows.map((c) => c.length)));
-  const maxColRuns = $derived(Math.max(1, ...game.clues.cols.map((c) => c.length)));
+  // While drawing, clues change with every stroke: reserve room for a third
+  // of the line length so the board doesn't resize all the time (SPEC §6.10).
+  const maxRowRuns = $derived(Math.max(1, editing ? Math.ceil(W / 3) : 1, ...game.clues.rows.map((c) => c.length)));
+  const maxColRuns = $derived(Math.max(1, editing ? Math.ceil(H / 3) : 1, ...game.clues.cols.map((c) => c.length)));
   /** Cell size that fits the viewport, before zooming. */
   const fitCell = $derived.by(() => {
     const byW = (wrapW - 8) / (W + maxRowRuns * CLUE);
@@ -147,7 +157,7 @@
     const v = game.board[i]!;
     const state =
       v === UNKNOWN || v === MARK_X
-        ? game.solved
+        ? game.solved || editing
           ? 'empty'
           : v === UNKNOWN
             ? 'unknown'
@@ -155,7 +165,7 @@
         : palette.length === 1
           ? 'filled'
           : `filled ${names[v - 1]}`;
-    return `Row ${Math.floor(i / W) + 1}, column ${(i % W) + 1}, ${state}`;
+    return `Row ${Math.floor(i / W) + 1}, column ${(i % W) + 1}, ${state}${undetermined.has(i) ? ', undetermined' : ''}`;
   }
 
   const lineError = (errors: boolean[], i: number) => showErrors && !game.solved && errors[i]!;
@@ -442,7 +452,7 @@
         bind:this={gridEl}
         style:grid-template-columns="repeat({W}, var(--cell))"
         role="grid"
-        aria-label="Picross board, {W} by {H}{game.solved ? ', solved' : ''}"
+        aria-label="{editing ? 'Puzzle editor' : 'Picross board'}, {W} by {H}{game.solved ? ', solved' : ''}"
         aria-rowcount={H}
         aria-colcount={W}
         aria-activedescendant="cell-{cursor}"
@@ -467,6 +477,7 @@
                 class:t5r={(c + 1) % 5 === 0 && c < W - 1}
                 class:t5b={(r + 1) % 5 === 0 && r < H - 1}
                 class:wrong={wrong.has(i)}
+                class:undet={undetermined.has(i)}
                 class:hint-line={r === hintRow || c === hintCol}
                 class:hint-cell={hint?.cell === i}
                 class:cursor={focused && i === cursor && hover === null}
@@ -667,6 +678,24 @@
     outline-offset: -3px;
     z-index: 2;
     animation: pulse 0.5s ease-in-out 4 alternate;
+  }
+
+  /* Undetermined in the editor: hatched, so it reads on any fill color. */
+  .cell.undet {
+    outline: 2px solid var(--danger);
+    outline-offset: -2px;
+  }
+
+  /* An overlay, since a filled cell's inline background hides any image. */
+  .cell.undet::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      45deg,
+      color-mix(in srgb, var(--danger) 60%, transparent) 0 2px,
+      transparent 2px 6px
+    );
   }
 
   .cell.hint-line {

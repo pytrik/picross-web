@@ -5,15 +5,17 @@
   import './styles/global.css';
   import { onMount } from 'svelte';
   import Board from './components/Board.svelte';
+  import EditorView from './components/EditorView.svelte';
   import NewPuzzleDialog from './components/NewPuzzleDialog.svelte';
   import OptionsDialog from './components/OptionsDialog.svelte';
   import RecentDialog from './components/RecentDialog.svelte';
-  import { parseHash } from './lib/puzzle/codec.ts';
+  import { encodePuzzle, parseHash } from './lib/puzzle/codec.ts';
   import type { LineRef } from './lib/puzzle/hint.ts';
   import { RATING_LABELS } from './lib/puzzle/rating.ts';
   import { STYLE_LABELS } from './lib/puzzle/styles.ts';
-  import { MARK_X } from './lib/puzzle/types.ts';
+  import { MARK_X, type PuzzleDef } from './lib/puzzle/types.ts';
   import { fromDefinition, resolvePuzzle, type LoadedPuzzle } from './lib/source/index.ts';
+  import { Editor } from './lib/state/editor.svelte.ts';
   import { Game } from './lib/state/game.svelte.ts';
   import { effectivePalette, loadSettings, saveSettings, type Settings } from './lib/state/settings.ts';
   import { defaultStorage } from './lib/state/storage.ts';
@@ -74,6 +76,7 @@
   function setGame(puzzle: LoadedPuzzle) {
     game?.pause();
     game?.flush();
+    leaveEditor();
     const next = new Game(puzzle, storage, () => winDialog.showModal());
     next.autoX = settings.autoX;
     game = next;
@@ -130,7 +133,13 @@
   async function loadFromHash() {
     const target = parseHash(location.hash);
     if (target.kind === 'none') return newPuzzle(true);
-    if (target.kind === 'puzzle' && game && `p=${target.value}` === game.hash) return;
+    if (target.kind === 'edit') return openEditor(false);
+    if (target.kind === 'puzzle' && game && `p=${target.value}` === game.hash) {
+      // Back from the editor to the puzzle it was opened from.
+      leaveEditor();
+      if (document.visibilityState === 'visible') game.resume();
+      return;
+    }
     // Navigating (Back/Forward, pasted link) wins over a generation in flight;
     // otherwise its result would replace the puzzle we're about to show.
     genAbort?.abort();
@@ -158,6 +167,51 @@
     const { width, height, palette } = game.def;
     const difficulty = game.rating === 'unrated' ? 'any' : game.rating;
     newPuzzle(false, { width, height, palette, density: settings.density, difficulty, style: settings.style });
+  }
+
+  // --- editor (SPEC §6.10) ---------------------------------------------------
+
+  let mode = $state<'play' | 'edit'>('play');
+  let editor = $state.raw<Editor | null>(null);
+  /** The editor was opened with Editor… over a puzzle, so Back returns to it. */
+  let editorPushed = false;
+
+  function openEditor(push: boolean) {
+    // Like navigating away: a generation in flight must not replace the view.
+    genAbort?.abort();
+    game?.pause();
+    game?.flush();
+    editor ??= new Editor(storage, settings);
+    if (push) history.pushState(null, '', '#edit');
+    editorPushed = push && game !== null;
+    mode = 'edit';
+  }
+
+  function leaveEditor() {
+    editor?.flush();
+    editorPushed = false;
+    mode = 'play';
+  }
+
+  function closeEditor() {
+    if (editorPushed) history.back();
+    else if (game) {
+      history.replaceState(null, '', `#${game.hash}`);
+      leaveEditor();
+      if (document.visibilityState === 'visible') game.resume();
+    } else newPuzzle(true);
+  }
+
+  function playDrawn(def: PuzzleDef) {
+    const puzzle = fromDefinition(def);
+    history.pushState(null, '', `#${puzzle.hash}`);
+    setGame(puzzle);
+  }
+
+  async function copyIntoEditor() {
+    if (!game || !editor) return;
+    const ok = await showConfirm('Copy the puzzle you were playing into the editor? This shows its solution and replaces your drawing.');
+    if (ok) editor.copyFrom(game.def);
   }
 
   // --- actions ---------------------------------------------------------------
@@ -221,17 +275,22 @@
   }
 
   let shareDialog: HTMLDialogElement;
-  async function share() {
+  let shareUrl = $state('');
+  async function share(url = location.href) {
+    shareUrl = url;
     try {
-      await navigator.clipboard.writeText(location.href);
+      await navigator.clipboard.writeText(url);
       showToast('Link copied to clipboard.');
     } catch {
       shareDialog.showModal();
     }
   }
 
+  /** The editor shares the drawn puzzle's link, not `#edit`. */
+  const shareDrawn = (def: PuzzleDef) => share(`${location.href.split('#')[0]}#${encodePuzzle(def)}`);
+
   function onGlobalKey(e: KeyboardEvent) {
-    if (!game || document.querySelector('dialog[open]')) return;
+    if (!game || mode !== 'play' || document.querySelector('dialog[open]')) return;
     const target = e.target as HTMLElement;
     if (target.closest('input, textarea, select')) return;
     const mod = e.ctrlKey || e.metaKey;
@@ -261,11 +320,15 @@
       if (document.visibilityState === 'hidden') {
         game?.pause();
         game?.flush();
-      } else {
+        editor?.flush();
+      } else if (mode === 'play') {
         game?.resume();
       }
     };
-    const onPageHide = () => game?.flush();
+    const onPageHide = () => {
+      game?.flush();
+      editor?.flush();
+    };
     const media = window.matchMedia('(prefers-color-scheme: dark)');
     const onMedia = () => (systemDark = media.matches);
     const tick = setInterval(() => game?.tick(), 500);
@@ -311,12 +374,24 @@
   <nav>
     <button onclick={() => newDialog.open()}>New puzzle…</button>
     <button class="secondary" onclick={openRecent}>Recent…</button>
-    <button class="secondary" onclick={share} disabled={!game}>Share</button>
+    <button class="secondary" onclick={() => openEditor(true)} disabled={mode === 'edit'}>Editor…</button>
+    <button class="secondary" onclick={() => share()} disabled={!game || mode === 'edit'}>Share</button>
     <button class="secondary" onclick={() => optionsDialog.open()}>Options…</button>
   </nav>
 </header>
 
-{#if game}
+{#if mode === 'edit' && editor}
+  <EditorView
+    {editor}
+    {bg}
+    canCopy={game !== null}
+    onPlay={playDrawn}
+    onShare={shareDrawn}
+    onCopy={copyIntoEditor}
+    onClose={closeEditor}
+    {showToast}
+  />
+{:else if game}
   <div class="toolbar" role="toolbar" aria-label="Tools">
     <div class="group swatches" role="radiogroup" aria-label="Fill color">
       {#each game.def.palette as color, i (i)}
@@ -471,7 +546,7 @@
 
 <dialog bind:this={shareDialog}>
   <p>Copy this link to share the puzzle:</p>
-  <input class="share-url" readonly value={location.href} onfocus={(e) => e.currentTarget.select()} />
+  <input class="share-url" readonly value={shareUrl} onfocus={(e) => e.currentTarget.select()} />
   <div class="actions"><button onclick={() => shareDialog.close()}>OK</button></div>
 </dialog>
 
@@ -504,68 +579,23 @@
     color: var(--muted);
   }
 
-  nav,
-  .group {
+  nav {
     display: flex;
     gap: 0.4rem;
     flex-wrap: wrap;
     align-items: center;
   }
 
-  /* Keep the four header buttons on one row on phones. */
+  /* Keep the header buttons compact on phones. */
   @media (max-width: 480px) {
-    nav button {
-      padding: 0.35rem 0.55rem;
-      font-size: 0.9rem;
+    nav {
+      gap: 0.3rem;
     }
-  }
 
-  .toolbar {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem 1.25rem;
-    padding: 0.25rem 1rem 0.75rem;
-  }
-
-  .swatch {
-    width: 2.25rem;
-    height: 2.25rem;
-    padding: 0;
-    border: 2px solid var(--border);
-    border-radius: 0.4rem;
-  }
-
-  .swatch[aria-checked='true'] {
-    outline: 3px solid var(--accent);
-    outline-offset: 2px;
-  }
-
-  .x-tool {
-    background: var(--cell-bg);
-    position: relative;
-  }
-
-  .x-tool::before,
-  .x-tool::after {
-    content: '';
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    width: 60%;
-    height: 2px;
-    background: var(--x);
-    transform: translate(-50%, -50%) rotate(45deg);
-  }
-
-  .x-tool::after {
-    transform: translate(-50%, -50%) rotate(-45deg);
-  }
-
-  .zoom button {
-    min-width: 2.25rem;
-    font-weight: 700;
+    nav button {
+      padding: 0.3rem 0.45rem;
+      font-size: 0.85rem;
+    }
   }
 
   .rating {

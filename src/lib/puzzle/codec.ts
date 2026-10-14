@@ -135,12 +135,15 @@ export type HashTarget =
   | { kind: 'none' }
   | { kind: 'puzzle'; value: string }
   | { kind: 'id'; id: string }
+  /** The puzzle editor (SPEC §6.10). */
+  | { kind: 'edit' }
   | { kind: 'invalid' };
 
 /** Classifies `location.hash` (with or without the leading `#`). */
 export function parseHash(hash: string): HashTarget {
   const body = hash.startsWith('#') ? hash.slice(1) : hash;
   if (body === '') return { kind: 'none' };
+  if (body === 'edit') return { kind: 'edit' };
   if (body.startsWith('p=')) return { kind: 'puzzle', value: body.slice(2) };
   if (body.startsWith('id=') && body.length > 3) {
     return { kind: 'id', id: decodeURIComponent(body.slice(3)) };

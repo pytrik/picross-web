@@ -1,9 +1,8 @@
 <script lang="ts">
-  import { PALETTES, paletteById } from '../lib/puzzle/palettes.ts';
   import { STYLES, STYLE_LABELS } from '../lib/puzzle/styles.ts';
   import { DENSITY_BANDS, DIFFICULTIES, MIN_AREA, RATING_LABELS, difficultyAllowed } from '../lib/puzzle/rating.ts';
-  import { MAX_COLORS, MAX_SIZE, MIN_SIZE } from '../lib/puzzle/types.ts';
-  import { DEFAULT_SETTINGS, MAX_DENSITY, MIN_DENSITY, effectivePalette, type Settings } from '../lib/state/settings.ts';
+  import { DEFAULT_SETTINGS, MAX_DENSITY, MIN_DENSITY, clampSize, effectivePalette, type Settings } from '../lib/state/settings.ts';
+  import GridFields from './GridFields.svelte';
 
   interface Props {
     settings: Settings;
@@ -20,21 +19,12 @@
     dialog.showModal();
   }
 
-  const PRESETS = [5, 10, 15, 20, 25];
   const colors = $derived(effectivePalette(draft));
   const duplicate = $derived(new Set(colors).size !== colors.length);
   /** SPEC §5.5: Medium and Hard need a large enough board. */
   const tooSmall = $derived(draft.difficulty !== 'any' && !difficultyAllowed(draft.difficulty, draft.width, draft.height));
   const band = $derived(draft.difficulty === 'any' ? null : DENSITY_BANDS[draft.difficulty]);
   const pct = (v: number) => Math.round(v * 100);
-  const clampSize = (v: number) => Math.min(MAX_SIZE, Math.max(MIN_SIZE, Math.round(v) || MIN_SIZE));
-
-  function setOverride(i: number, value: string) {
-    const next = [...draft.overrides];
-    while (next.length <= i) next.push(null);
-    next[i] = value.toLowerCase() === paletteById(draft.paletteId).colors[i] ? null : value.toLowerCase();
-    draft.overrides = next;
-  }
 
   function submit(e: SubmitEvent) {
     e.preventDefault();
@@ -50,61 +40,7 @@
   <form onsubmit={submit}>
     <h2 id="new-title">New puzzle</h2>
 
-    <fieldset>
-      <legend>Size</legend>
-      <div class="chips">
-        {#each PRESETS as n (n)}
-          <button
-            type="button"
-            class="chip"
-            class:active={draft.width === n && draft.height === n}
-            onclick={() => ((draft.width = n), (draft.height = n))}>{n}×{n}</button
-          >
-        {/each}
-      </div>
-      <div class="custom">
-        <label>W <input type="number" min={MIN_SIZE} max={MAX_SIZE} bind:value={draft.width} /></label>
-        <span>×</span>
-        <label>H <input type="number" min={MIN_SIZE} max={MAX_SIZE} bind:value={draft.height} /></label>
-      </div>
-    </fieldset>
-
-    <fieldset>
-      <legend>Colors</legend>
-      <div class="chips">
-        {#each { length: MAX_COLORS } as _, i (i)}
-          <button type="button" class="chip" class:active={draft.colors === i + 1} onclick={() => (draft.colors = i + 1)}
-            >{i + 1}</button
-          >
-        {/each}
-      </div>
-    </fieldset>
-
-    <fieldset>
-      <legend>Palette</legend>
-      <div class="palettes">
-        {#each PALETTES as p (p.id)}
-          <label class="palette" class:active={draft.paletteId === p.id}>
-            <input type="radio" name="palette" value={p.id} bind:group={draft.paletteId} onchange={() => (draft.overrides = [])} />
-            <span class="name">{p.name}</span>
-            <span class="preview">
-              {#each p.colors.slice(0, draft.colors) as c (c)}<i style:background={c}></i>{/each}
-            </span>
-          </label>
-        {/each}
-      </div>
-      <div class="swatches">
-        {#each colors as c, i (i)}
-          <label class="swatch" title="Change color {i + 1}">
-            <input type="color" value={c} oninput={(e) => setOverride(i, e.currentTarget.value)} />
-          </label>
-        {/each}
-        {#if draft.overrides.some(Boolean)}
-          <button type="button" class="link" onclick={() => (draft.overrides = [])}>Reset colors</button>
-        {/if}
-      </div>
-      {#if duplicate}<p class="error">Each color must be different.</p>{/if}
-    </fieldset>
+    <GridFields bind:value={draft} />
 
     <fieldset>
       <legend>Style</legend>
@@ -215,71 +151,6 @@
 
   .chip.unavailable:not(.active) {
     opacity: 0.55;
-  }
-
-  .custom {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .custom input {
-    width: 4.5rem;
-  }
-
-  .palettes {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
-    gap: 0.35rem;
-  }
-
-  .palette {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    padding: 0.4rem 0.5rem;
-    border: 1px solid var(--border);
-    border-radius: 0.4rem;
-    cursor: pointer;
-  }
-
-  .palette.active {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 1px var(--accent);
-  }
-
-  .palette input {
-    position: absolute;
-    opacity: 0;
-    pointer-events: none;
-  }
-
-  .preview {
-    display: flex;
-    gap: 2px;
-  }
-
-  .preview i {
-    width: 1rem;
-    height: 1rem;
-    border-radius: 2px;
-  }
-
-  .swatches {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    flex-wrap: wrap;
-  }
-
-  .swatch input {
-    width: 2.2rem;
-    height: 2.2rem;
-    padding: 0;
-    border: 1px solid var(--border);
-    border-radius: 0.3rem;
-    background: none;
-    cursor: pointer;
   }
 
   .range-labels {

@@ -26,6 +26,9 @@ export interface Settings {
   autoX: boolean;
 }
 
+/** The size and palette part of the settings, shared with the editor draft (SPEC §6.10). */
+export type GridSettings = Pick<Settings, 'width' | 'height' | 'colors' | 'paletteId' | 'overrides'>;
+
 export const DEFAULT_SETTINGS: Settings = {
   width: 10,
   height: 10,
@@ -44,8 +47,18 @@ export const MIN_DENSITY = 0.4;
 export const MAX_DENSITY = 0.75;
 
 const KEY = 'picross:settings';
+
+/** A typed width/height rounded and clamped to 5..30 (empty input → 5). */
+export const clampSize = (v: number) => Math.min(MAX_SIZE, Math.max(MIN_SIZE, Math.round(v) || MIN_SIZE));
 const clamp = (v: unknown, lo: number, hi: number, fallback: number) =>
   typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : fallback;
+
+/** Per-swatch overrides from storage: valid colors kept, anything else null. */
+export function loadOverrides(value: unknown): (string | null)[] {
+  return Array.isArray(value)
+    ? value.slice(0, MAX_COLORS).map((c) => (typeof c === 'string' && /^#[0-9a-f]{6}$/.test(c) ? c : null))
+    : [];
+}
 
 export function loadSettings(storage: KV | null): Settings {
   const s = readJson<Partial<Settings>>(storage, KEY) ?? {};
@@ -55,9 +68,7 @@ export function loadSettings(storage: KV | null): Settings {
     height: Math.round(clamp(s.height, MIN_SIZE, MAX_SIZE, d.height)),
     colors: Math.round(clamp(s.colors, 1, MAX_COLORS, d.colors)),
     paletteId: paletteById(String(s.paletteId)).id,
-    overrides: Array.isArray(s.overrides)
-      ? s.overrides.slice(0, MAX_COLORS).map((c) => (typeof c === 'string' && /^#[0-9a-f]{6}$/.test(c) ? c : null))
-      : [],
+    overrides: loadOverrides(s.overrides),
     density: clamp(s.density, MIN_DENSITY, MAX_DENSITY, d.density),
     difficulty: s.difficulty === 'easy' || s.difficulty === 'medium' || s.difficulty === 'hard' ? s.difficulty : 'any',
     style: STYLES.includes(s.style as Style) ? (s.style as Style) : 'random',
@@ -72,7 +83,7 @@ export function saveSettings(storage: KV | null, settings: Settings): void {
 }
 
 /** The palette the generator would use for these settings. */
-export function effectivePalette(settings: Settings): string[] {
+export function effectivePalette(settings: Pick<GridSettings, 'paletteId' | 'colors' | 'overrides'>): string[] {
   const preset = paletteById(settings.paletteId).colors;
   return preset.slice(0, settings.colors).map((c, i) => settings.overrides[i] ?? c);
 }

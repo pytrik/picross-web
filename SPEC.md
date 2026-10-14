@@ -1,8 +1,8 @@
 # Picross Web — Specification
 
 Status: **v1 in progress**: 0.5.0 is live at
-<https://picross-web.pytrik.workers.dev>; the puzzle editor and database
-puzzles (§1.3) are still to do. v1 is finished when §1.4 is met, and ships as
+<https://picross-web.pytrik.workers.dev>; the puzzle editor is done
+(unreleased); database puzzles (§1.3) are still to do. v1 is finished when §1.4 is met, and ships as
 **1.0.0**.
 This document is the source of truth for behaviour. When the code and this spec disagree, one of them is a bug.
 
@@ -31,8 +31,9 @@ Implemented (0.5.0):
   (§8).
 - Hint (§6.9), difficulty rating with a target difficulty (§5.5), and
   picture-like grid styles (§5.6), added in 0.5.0.
+- Puzzle editor (§6.10), done, not yet released.
 
-Still to do: the puzzle editor and database puzzles (§1.3). With those,
+Still to do: database puzzles (§1.3). With those,
 everything except database puzzles keeps working offline from the single
 file; database puzzles and the Library need the network (§11).
 
@@ -55,9 +56,9 @@ Each feature gets its own spec section before work starts. That section fills
 in the design; the requirements below are fixed. Every feature MUST be covered
 by unit and e2e tests (§10.7) and documented in README.md.
 
-Done in 0.5.0: Hint, difficulty rating, picture-like grids (their
-requirements are kept below for reference). To do: puzzle editor, database
-puzzles.
+Done in 0.5.0: Hint, difficulty rating, picture-like grids. Done since:
+puzzle editor. (Their requirements are kept below for reference.) To do:
+database puzzles.
 
 **Hint** (done: §6.9)
 
@@ -94,7 +95,7 @@ puzzles.
   every color used, roughly the chosen density, and the 10 s budget at the
   worst case. If repairs must break the style, uniqueness wins.
 
-**Puzzle editor** (to do)
+**Puzzle editor** (done: §6.10)
 
 - **Editor…** opens a mode for drawing a puzzle: size 5–30 × 5–30, 1–6 colors
   with the same palette presets and overrides as §5.4, and the same drawing
@@ -167,6 +168,7 @@ v1 is finished, and 1.0.0 is tagged, when all of these hold:
 | **Style** | How the generator shapes a grid: Random, Symmetric or Smooth (§5.6). |
 | **Hint** | The toolbar action that fills in one deducible cell (§6.9). Not to be confused with clue dimming (§6.5). |
 | **Clue dimming** | Fading clue runs the marks already complete (§6.5). |
+| **Draft** | The puzzle being drawn in the editor (§6.10). Saved locally, never a link itself. |
 
 ---
 
@@ -261,7 +263,8 @@ Bit packing:
 
 Size budget: 30×30 with 6 colors = 338 bytes → 451 chars of data. Acceptable.
 
-Other hash keys are reserved: `#id=<string>` for DB puzzles (§11). Unknown
+Other hash keys: `#edit` opens the puzzle editor (§6.10); `#id=<string>` is
+reserved for DB puzzles (§11). Unknown
 format versions MUST be treated as invalid, not guessed at.
 
 The app MUST produce canonical hashes (lowercase hex, no padding) so that equal
@@ -275,6 +278,7 @@ definitions produce equal strings.
 | Load with no hash | Generate with last-used settings (§8), then `history.replaceState` the hash (no extra history entry). |
 | User generates a puzzle (**Generate** in the New puzzle dialog, or **Play another**) | Generate, then `history.pushState` the hash (creates a history entry, so Back returns to the previous puzzle; pushState does not fire `hashchange`, so no double load). |
 | `hashchange` event (Back/Forward, pasted link) | Load the new puzzle; the old one's progress is already persisted. A generation still in flight is cancelled, so it cannot replace the puzzle being navigated to. |
+| **Editor…**, or load / `hashchange` with `#edit` | Show the puzzle editor (§6.10); **Editor…** uses `history.pushState`. The puzzle being played stays loaded (paused) so Back returns to it without reloading. |
 
 ### 4.4 Invalid hash
 
@@ -619,6 +623,82 @@ step. Disabled on a solved board. Implemented in `lib/puzzle/hint.ts`.
 `hints` is persisted (§7.1), cleared by **Restart**, and shown in the win
 dialog under "Hints used".
 
+### 6.10 Puzzle editor
+
+**Editor…** in the header opens a mode for drawing a puzzle by hand. Model
+in `lib/state/editor.svelte.ts`, view in `components/EditorView.svelte`.
+
+**Route.** The editor lives at `#edit` (§4.3). **Editor…** pushes `#edit`,
+so Back returns to the puzzle being played (its timer pauses while editing
+and resumes on return); reloading `#edit` reopens the editor. **Close**
+goes back the same way, or, when the editor was opened directly from a
+link, to a freshly generated puzzle. **New puzzle…** and **Recent…** work
+as in play and leave the editor. A generation in flight is cancelled on
+entering the editor. The header **Share** is disabled while editing (the
+editor has its own).
+
+**Draft.** The editor edits one draft: size (5–30 × 5–30), color count
+(1–6), palette preset and swatch overrides (same presets, same duplicate
+rule as §5.4), and the cells (`0` empty, `1..N` color). The first draft
+takes its size and palette from the saved generator settings (§7.3), with
+an empty grid. The draft is saved to `localStorage` (§7.4) as it changes and
+survives reloads; there is only one.
+
+**Grid…** opens a dialog with the size, color count, palette and overrides
+fields of the New puzzle dialog. **Apply** keeps the drawing anchored at the
+top-left: cells outside a smaller size and cells of removed colors (fewer
+colors) are erased, and the dialog says so before applying ("12 drawn cells
+will be erased."). A change that erases or moves cells clears undo history;
+a palette-only change keeps it.
+
+**Drawing.** The toolbar has the draft's color swatches and an **Erase**
+tool in place of Mark X. Input is the play input (§6.1–§6.4, incl. drag
+rules, run counter, keyboard, undo/redo, zoom & pan §6.7), with "mark X"
+meaning erase: right-click / `X` / the Erase tool empty a cell, the click
+table of §6.2 applies with X read as empty. **Clear** empties the grid as one
+undo step. Undo history is in memory only, like play. There are no clue
+dimming, line errors, mistake checks, hints, timer or solved state.
+
+**Clues** are derived from the cells and update live while drawing. To keep
+the board from resizing at every stroke, the fit (§8) reserves at least
+`ceil(W / 3)` row-clue slots and `ceil(H / 3)` column-clue slots.
+
+**Status** (updated after every stroke, undo/redo and grid change, not
+during a drag): the line solver (§5.3) runs on the puzzle the link would
+contain (see unused colors below).
+
+| Draft | Status line | Play / Share |
+|---|---|---|
+| No filled cell | "Empty: draw a picture to play it." | disabled |
+| Line logic determines every cell | "Line-solvable · Medium" (rating, §5.5) | enabled |
+| Otherwise | "Not line-solvable: 12 cells undetermined." | disabled |
+
+**Check** reports the same in a toast ("Line-solvable, rated Medium." /
+"Line logic can't determine 12 cells; they're highlighted.") and, when not
+line-solvable, highlights the undetermined cells (hatched, and their
+`aria-label` gains ", undetermined") until the next change.
+
+**Unused colors.** The link's palette contains only the colors actually
+drawn, in draft order (cell values renumbered), so a draft that leaves a
+color out still passes validation (§4.1). The status line adds "Unused
+colors left out: blue." The draft keeps its palette.
+
+**Play** pushes the puzzle's `p=` hash and plays it (a normal puzzle from
+then on: progress, Recent, Back returns to the editor). **Share** copies the
+puzzle's `p=` link (not `#edit`) like §6.5, with the same fallback dialog.
+Both need the status to be line-solvable, so every `p=` link the app
+produces is unique and solvable without guessing (§1.1).
+
+**Copy puzzle** loads the puzzle that was being played when the editor was
+opened into the draft (size, palette as a preset when it matches one,
+otherwise as overrides of Classic, and the solution cells). It shows the
+solution, so it asks first ("Copy the puzzle you were playing into the
+editor? This shows its solution and replaces your drawing."). It is disabled
+when there is no such puzzle (e.g. after reloading `#edit`). It replaces the
+draft and clears undo history.
+
+The editor works offline: it needs nothing but the single file.
+
 ---
 
 ## 7. Persistence (localStorage)
@@ -672,12 +752,32 @@ evict the oldest 10 and retry once.
 
 Unsolved boards with zero progress are not stored.
 
+### 7.4 Editor draft
+
+```
+picross:draft  →  JSON
+{
+  "v": 1,
+  "width": 10, "height": 10,
+  "colors": 2, "paletteId": "classic",
+  "overrides": [null, "#ff0000"],   // as in settings
+  "cells": "<base64url>"            // bit-packed like §4.2, bits for `colors`
+}
+```
+
+Written debounced (~300 ms) and flushed on `pagehide` /
+`visibilitychange:hidden`. Not part of the LRU index. A missing or invalid
+record (bad size, palette, cell data) loads as a new empty draft.
+
 ---
 
 ## 8. UI layout
 
 - **Header**: app name, version, **New puzzle…** (opens the dialog),
-  **Recent…** (§6.8), **Share**, **Options…**.
+  **Recent…** (§6.8), **Editor…** (§6.10), **Share**, **Options…**.
+- **Editor toolbar** (§6.10, replaces the play toolbar): color swatches +
+  Erase, undo, redo, clear, zoom −/+; **Grid…**, **Copy puzzle**,
+  **Check**, **Play**, **Share**, **Close**; and the status line.
 - **New puzzle panel** (dialog): size presets + custom W/H, color count,
   palette preset, swatch overrides, style (§5.6), difficulty (§5.5),
   density, **Generate**.
@@ -727,6 +827,12 @@ Unsolved boards with zero progress are not stored.
 - Hint results, mistake-check results and the style fallback are announced
   through the `role="status"` toast; the hint's line highlight is never the
   only signal (§6.9).
+- Editor (§6.10): the grid is labelled "Puzzle editor, W by H" and empty
+  cells read "empty" (not "unknown"). The Erase tool is a radio in the
+  swatch group. The status line is text; highlighted undetermined cells
+  append ", undetermined" to their label and Check announces the count via
+  the toast. Disabled Play/Share are explained by the status line next to
+  them.
 - Everything reachable by keyboard; nothing relies on hover alone.
 
 ---
@@ -752,6 +858,8 @@ src/
     NewPuzzleDialog.svelte
     OptionsDialog.svelte  assist options (§6.5)
     RecentDialog.svelte   recent puzzles list + thumbnails (§6.8)
+    EditorView.svelte     editor toolbar, status, board (§6.10)
+    GridFields.svelte     size, colors, palette fields (New puzzle, Grid…)
   lib/
     puzzle/             pure logic, no DOM/Svelte
       types.ts          PuzzleDef, Clue, constants
@@ -769,6 +877,8 @@ src/
       generate.ts       spawns the inlined worker; main-thread fallback
     state/
       game.svelte.ts    Game: board, timer, undo, saves (Svelte runes)
+      editor.svelte.ts  Editor: draft, strokes, undo, status, export (§6.10)
+      board-model.ts    what Board.svelte needs from a Game or an Editor
       progress.ts       localStorage records + LRU (§7), recent list (§6.8)
       settings.ts       last-used options + theme
       history.ts        undo/redo stack
@@ -864,6 +974,12 @@ modules (`*.svelte.ts`) are compiled on the fly by a Node loader hook
 - LRU eviction; recent list (hash stored, legacy records skipped).
 - settings loading/clamping and palette overrides; color naming; date
   formatting; zoom limits and anchoring.
+- `Editor` (§6.10): strokes + undo/redo (X erases), cancel, Clear, status
+  (empty / line-solvable with rating / undetermined cells), Check highlight
+  cleared by the next change, export dropping unused colors, reshape and
+  erased-cell count, history kept only for palette-only grid changes, Copy
+  puzzle (preset matching), draft persistence and invalid records; `#edit`
+  hash parsing.
 - `Game`: strokes + undo/redo, clue dimming, line errors, auto-X (incl.
   undo), stroke cancel, timer (start, pause/resume, resume on load), solve,
   check, restart, loading saved progress, Hint (undo step, counting,
@@ -883,7 +999,11 @@ solving + win dialog actions, multi-color, Back
 navigation, restart, invalid links, palette validation, `file://` offline use,
 screen-reader labels and grid structure, pre-paint theme, options (line
 errors, auto-X), run counter, recent puzzles, zoom buttons + sticky clues,
-and mobile layout/touch incl. pinch-zoom. Cells expose `data-v` (board value) for tests.
+and mobile layout/touch incl. pinch-zoom; the editor (live clues, status,
+Check highlight + labels, Play and Back to the editor and the puzzle before,
+erase tool / right click / keyboard, draft reload, unused colors, Share link,
+Close from a direct link, Grid erase warning, Copy puzzle, `file://`, mobile
+fit + tap). Cells expose `data-v` (board value) for tests.
 
 ### 10.8 Versioning
 

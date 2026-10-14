@@ -99,6 +99,8 @@ test('parseHash classifies hashes', () => {
   assert.deepEqual(parseHash('#'), { kind: 'none' });
   assert.deepEqual(parseHash('#p=1.5x5'), { kind: 'puzzle', value: '1.5x5' });
   assert.deepEqual(parseHash('#id=abc%20d'), { kind: 'id', id: 'abc d' });
+  assert.deepEqual(parseHash('#edit'), { kind: 'edit' });
+  assert.deepEqual(parseHash('#editor'), { kind: 'invalid' });
   assert.deepEqual(parseHash('#foo'), { kind: 'invalid' });
 });
 

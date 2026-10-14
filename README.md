@@ -20,6 +20,8 @@ no guessing.
   thumbnails of your progress.
 - **Difficulty and style**: every puzzle is rated Easy, Medium or Hard, and
   you can ask for a difficulty and a Random, Symmetric or Smooth style.
+- **Puzzle editor**: draw your own puzzle, check that it can be solved by
+  logic alone, then play it or share its link.
 - Undo/redo, a Hint button, mistake checks, dimmed clues for finished runs,
   impossible-line warnings, optional auto-X for finished lines, a run counter
   while dragging, timer, keyboard play, touch support with pinch-zoom, and
@@ -29,8 +31,8 @@ no guessing.
 offline `index.html` from the [latest release](https://github.com/pytrik/picross-web/releases/latest).
 
 Full behaviour is specified in [SPEC.md](SPEC.md). The road to 1.0.0 is in
-its §1.3: still to come are a puzzle editor and a curated puzzle library
-(`#id=…` links served by a Worker + D1). The definition of done is §1.4.
+its §1.3: still to come is a curated puzzle library (`#id=…` links served
+by a Worker + D1). The definition of done is §1.4.
 
 ## How to play
 
@@ -71,6 +73,23 @@ app tells you.
 Stuck? **Hint** fills in one cell that logic can deduce from your marks and
 highlights the row or column that proves it. If you've made a mistake, it
 points that out instead. Hints used are shown when you solve the puzzle.
+
+## Puzzle editor
+
+**Editor…** opens a drawing board (its link is `#edit`, so Back returns to
+the puzzle you were playing). Pick colors from the toolbar and draw with the
+same mouse, touch and keyboard controls as in play; right click, `X` or the
+**Erase** tool clear cells. The clues update as you draw. **Grid…** sets the
+size, color count and palette (it warns if a change would erase cells), and
+**Clear** empties the grid (undoable).
+
+The line under the toolbar tells you whether logic alone can solve the
+picture, and its difficulty. **Check** highlights the cells that logic can't
+determine; change the picture until none are left. Only then are **Play**
+and **Share** enabled, so every shared puzzle has a unique solution. Colors
+you didn't use are left out of the puzzle. **Copy puzzle** loads the puzzle
+you were playing into the editor (it shows its solution, so it asks first).
+Your drawing is saved in the browser and is still there next time.
 
 ## Development
 

@@ -57,6 +57,9 @@ file holds the non-obvious things learned while building it.
 - A line break inside template text renders as whitespace (a newline in
   `textContent`). Keep user-facing sentences that tests match exactly on one
   line, using `{@const}` for long expressions.
+- `Board.svelte` draws both play and the editor through `BoardModel`
+  (`lib/state/board-model.ts`); the editor maps X to erase in `setCell`, so
+  Board's input code needs no editor branches. Keep it that way.
 
 ### Values duplicated across files (change together)
 

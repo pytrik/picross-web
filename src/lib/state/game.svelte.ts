@@ -4,6 +4,7 @@ import { ratePuzzle, type Rating } from '../puzzle/rating.ts';
 import { lineFeasible } from '../puzzle/solver.ts';
 import { MARK_X, UNKNOWN, type Clues, type PuzzleDef } from '../puzzle/types.ts';
 import type { LoadedPuzzle } from '../source/index.ts';
+import type { BoardModel } from './board-model.ts';
 import { History, type Change } from './history.ts';
 import { clearProgress, loadProgress, saveProgress } from './progress.ts';
 import type { KV } from './storage.ts';
@@ -20,7 +21,7 @@ export function clickTarget(current: number, tool: number): number {
 }
 
 /** One puzzle being played: board, timer, undo history, persistence. */
-export class Game {
+export class Game implements BoardModel {
   readonly def: PuzzleDef;
   readonly hash: string;
   readonly key: string;

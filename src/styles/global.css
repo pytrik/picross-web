@@ -115,3 +115,68 @@ dialog {
 dialog::backdrop {
   background: rgba(0, 0, 0, 0.4);
 }
+
+/* Toolbars of play and the editor (SPEC §8). */
+.toolbar .group {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem 1.25rem;
+  padding: 0.25rem 1rem 0.75rem;
+}
+
+.toolbar .swatch {
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border: 2px solid var(--border);
+  border-radius: 0.4rem;
+}
+
+.toolbar .swatch[aria-checked='true'] {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.toolbar .x-tool,
+.toolbar .erase-tool {
+  background: var(--cell-bg);
+  position: relative;
+}
+
+.toolbar .x-tool::before,
+.toolbar .x-tool::after,
+.toolbar .erase-tool::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 60%;
+  height: 2px;
+  background: var(--x);
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.toolbar .x-tool::after {
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+.toolbar .zoom button {
+  min-width: 2.25rem;
+  font-weight: 700;
+}
+
+/* Erase (editor): a single slash, unlike the X of Mark empty. */
+.toolbar .erase-tool::before {
+  width: 70%;
+  background: var(--danger);
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
