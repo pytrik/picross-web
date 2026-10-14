@@ -220,3 +220,72 @@ test('saved progress records the puzzle hash', () => {
   game.flush();
   assert.equal(loadProgress(storage, game.key, 2, 25)?.hash, game.hash);
 });
+
+// Hints (SPEC §6.9). Row 1 (clue 0) forces five X marks.
+test('hint fills one forced cell as its own undo step and counts it', () => {
+  const { game, storage } = newGame();
+  game.autoX = true;
+  const hint = game.hint(5);
+  assert.deepEqual(hint, { kind: 'cell', cell: 5, value: MARK_X, line: { axis: 'row', index: 1 } });
+  assert.equal(game.board.filter((v) => v !== 0).length, 1, 'one cell, no auto-X');
+  assert.equal(game.hints, 1);
+  assert.ok(game.started, 'the clock runs');
+  game.undo();
+  assert.ok(game.board.every((v) => v === 0));
+  assert.equal(game.hints, 1, 'undo does not refund a hint');
+  game.redo();
+  assert.equal(game.board[5], MARK_X);
+  game.flush();
+  assert.equal(loadProgress(storage, game.key, 2, 25)?.hints, 1);
+  assert.equal(newGame(storage).game.hints, 1, 'loaded with the progress');
+});
+
+test('hint on a wrong board changes nothing and is not counted', () => {
+  const { game } = newGame();
+  stroke(game, [[5, 1]]);
+  assert.deepEqual(game.hint(), { kind: 'wrong', cells: [5] });
+  assert.equal(game.hints, 0);
+  assert.equal(game.checks, 0);
+  assert.deepEqual([...game.board.keys()].filter((i) => game.board[i]), [5]);
+});
+
+test('hint reports a stuck solver without counting (fixture is not line-solvable)', () => {
+  const { game } = newGame();
+  let n = 0;
+  for (let h = game.hint(); h?.kind === 'cell'; h = game.hint()) n++;
+  assert.equal(game.hint()?.kind, 'stuck');
+  assert.equal(game.hints, n);
+  assert.ok(!game.solved);
+});
+
+test('hints can finish the puzzle; disabled once solved; restart clears them', () => {
+  let solvedCalls = 0;
+  const def = puzzle();
+  def.cells.fill(0);
+  def.cells.fill(1, 0, 5);
+  def.cells[12] = 2;
+  const game = new Game(fromDefinition(def), memoryStorage(), () => solvedCalls++);
+  let n = 0;
+  while (!game.solved) {
+    assert.equal(game.hint(n)?.kind, 'cell');
+    assert.ok(++n <= 25);
+  }
+  assert.equal(solvedCalls, 1);
+  assert.equal(game.hints, n);
+  assert.equal(game.hint(), null);
+  game.restart();
+  assert.equal(game.hints, 0);
+});
+
+test('records without hints load as 0', () => {
+  const storage = memoryStorage();
+  const loaded = fromDefinition(puzzle());
+  const board = new Uint8Array(25);
+  board[0] = 1;
+  saveProgress(storage, loaded.key, 2, { board, elapsedMs: 5, checks: 1, hints: 4, solved: false });
+  const key = `picross:p:${loaded.key}`;
+  const { hints, ...legacy } = JSON.parse(storage.getItem(key)!);
+  assert.equal(hints, 4);
+  storage.setItem(key, JSON.stringify(legacy));
+  assert.equal(loadProgress(storage, loaded.key, 2, 25)?.hints, 0);
+});

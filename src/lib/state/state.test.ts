@@ -23,6 +23,7 @@ const progress = (board: number[], solved = false) => ({
   board: Uint8Array.from(board),
   elapsedMs: 1234,
   checks: 2,
+  hints: 1,
   solved,
 });
 

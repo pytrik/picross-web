@@ -1,5 +1,6 @@
 <script lang="ts">
   import { flushSync, onMount } from 'svelte';
+  import type { LineRef } from '../lib/puzzle/hint.ts';
   import { MARK_X, UNKNOWN, type Run } from '../lib/puzzle/types.ts';
   import { clickTarget, type Game } from '../lib/state/game.svelte.ts';
   import { contrast, paletteNames, textOn } from '../lib/ui/format.ts';
@@ -13,6 +14,8 @@
     xMode: boolean;
     /** Cells to flag as mistakes (SPEC §6.5). */
     wrong: Set<number>;
+    /** Last hint: the forcing line and the filled cell (SPEC §6.9). */
+    hint: { line: LineRef; cell: number } | null;
     /** Current page background, for clue contrast. */
     bg: string;
     /** Tint clues of impossible lines (SPEC §6.5). */
@@ -27,6 +30,7 @@
     activeColor,
     xMode,
     wrong,
+    hint,
     bg,
     showErrors,
     zoom = $bindable(),
@@ -119,6 +123,25 @@
   const focus = $derived(game.solved ? null : (hover ?? (focused ? cursor : null)));
   const hlRow = $derived(focus === null ? -1 : Math.floor(focus / W));
   const hlCol = $derived(focus === null ? -1 : focus % W);
+
+  const hintRow = $derived(hint?.line.axis === 'row' ? hint.line.index : -1);
+  const hintCol = $derived(hint?.line.axis === 'col' ? hint.line.index : -1);
+
+  /** Cursor cell, for the hint's nearest-line tie-break. */
+  export function cursorIndex(): number {
+    return cursor;
+  }
+
+  /** Moves the cursor to a cell and scrolls it into view. */
+  export function moveCursor(index: number) {
+    cursor = index;
+    hover = null;
+    scrollToCursor();
+  }
+
+  function scrollToCursor() {
+    document.getElementById(`cell-${cursor}`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
 
   function cellLabel(i: number): string {
     const v = game.board[i]!;
@@ -305,7 +328,7 @@
       const r = Math.min(H - 1, Math.max(0, Math.floor(cursor / W) + move[0]));
       const c = Math.min(W - 1, Math.max(0, (cursor % W) + move[1]));
       cursor = r * W + c;
-      document.getElementById(`cell-${cursor}`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      scrollToCursor();
       if (e.shiftKey && lastKey && !game.solved) keyStroke(cursor, lastKey.orig, lastKey.target);
       return;
     }
@@ -367,6 +390,7 @@
             class="col-clue"
             role="listitem"
             class:hl={c === hlCol}
+            class:hint={c === hintCol}
             class:err
             aria-label="Column {c + 1} clue: {describeClue(runs)}{err ? ', impossible' : ''}"
           >
@@ -397,6 +421,7 @@
             class="row-clue"
             role="listitem"
             class:hl={r === hlRow}
+            class:hint={r === hintRow}
             class:err
             aria-label="Row {r + 1} clue: {describeClue(runs)}{err ? ', impossible' : ''}"
           >
@@ -442,6 +467,8 @@
                 class:t5r={(c + 1) % 5 === 0 && c < W - 1}
                 class:t5b={(r + 1) % 5 === 0 && r < H - 1}
                 class:wrong={wrong.has(i)}
+                class:hint-line={r === hintRow || c === hintCol}
+                class:hint-cell={hint?.cell === i}
                 class:cursor={focused && i === cursor && hover === null}
                 style:background={filled ? palette[v - 1] : undefined}
                 aria-label={cellLabel(i)}
@@ -546,6 +573,11 @@
     box-shadow: inset 0 0 0 2px var(--danger);
   }
 
+  .col-clue.hint,
+  .row-clue.hint {
+    box-shadow: inset 0 0 0 2px var(--accent);
+  }
+
   .num {
     min-width: var(--clue);
     min-height: var(--clue);
@@ -632,6 +664,17 @@
 
   .cell.wrong {
     outline: 3px solid var(--danger);
+    outline-offset: -3px;
+    z-index: 2;
+    animation: pulse 0.5s ease-in-out 4 alternate;
+  }
+
+  .cell.hint-line {
+    background-image: linear-gradient(color-mix(in srgb, var(--accent) 22%, transparent), color-mix(in srgb, var(--accent) 22%, transparent));
+  }
+
+  .cell.hint-cell {
+    outline: 3px solid var(--accent);
     outline-offset: -3px;
     z-index: 2;
     animation: pulse 0.5s ease-in-out 4 alternate;

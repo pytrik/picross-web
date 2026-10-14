@@ -7,6 +7,8 @@ export interface Progress {
   board: Uint8Array;
   elapsedMs: number;
   checks: number;
+  /** Hints used (SPEC §6.9); 0 when absent. */
+  hints?: number;
   solved: boolean;
   /** Canonical hash body, so Recent puzzles can reopen it (SPEC §6.8). */
   hash?: string;
@@ -19,6 +21,8 @@ interface StoredProgress {
   board: string;
   elapsedMs: number;
   checks: number;
+  /** Missing in records written before hints existed. */
+  hints?: number;
   solved: boolean;
   updatedAt: number;
 }
@@ -42,7 +46,7 @@ export function loadProgress(storage: KV | null, key: string, colors: number, ce
   try {
     const board = decodeBoard(rec.board, colors, cellCount);
     if (board.some((v) => v > colors && v !== MARK_X)) return null;
-    const progress: Progress = { board, elapsedMs: rec.elapsedMs || 0, checks: rec.checks || 0, solved: !!rec.solved };
+    const progress: Progress = { board, elapsedMs: rec.elapsedMs || 0, checks: rec.checks || 0, hints: rec.hints || 0, solved: !!rec.solved };
     if (typeof rec.hash === 'string') progress.hash = rec.hash;
     return progress;
   } catch {
@@ -78,6 +82,7 @@ export function saveProgress(storage: KV | null, key: string, colors: number, pr
     board: encodeBoard(progress.board, colors),
     elapsedMs: Math.round(progress.elapsedMs),
     checks: progress.checks,
+    hints: progress.hints ?? 0,
     solved: progress.solved,
     updatedAt: now,
   };

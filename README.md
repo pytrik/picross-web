@@ -20,13 +20,13 @@ no guessing.
   thumbnails of your progress.
 - Undo/redo, clue completion hints, impossible-line warnings, optional
   auto-X for finished lines, a run counter while dragging, mistake checks,
-  timer, keyboard play, touch support with pinch-zoom, and light/dark theme.
+  hints, timer, keyboard play, touch support with pinch-zoom, and light/dark theme.
 
 **Play it at <https://picross-web.pytrik.workers.dev>**, or download the
 offline `index.html` from the [latest release](https://github.com/pytrik/picross-web/releases/latest).
 
-Full behaviour is specified in [SPEC.md](SPEC.md). The road to 1.0.0 (hints,
-difficulty ratings, picture-like puzzles, a puzzle editor and a curated puzzle
+Full behaviour is specified in [SPEC.md](SPEC.md). The road to 1.0.0 (difficulty
+ratings, picture-like puzzles, a puzzle editor and a curated puzzle
 library) is in its §1.3, with the definition of done in §1.4.
 
 ## How to play
@@ -45,6 +45,7 @@ between them; runs of **different** colors may touch.
 | Pick color | Click swatch | Tap swatch | `1`–`6` |
 | Undo / redo | Toolbar | Toolbar | Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z) |
 | Zoom | Toolbar − / + | Pinch, or toolbar − / + | `-` / `+` |
+| Hint | Toolbar | Toolbar | `H` |
 | Pan (when zoomed) | Scroll wheel / scrollbars | Two fingers, or one finger on the clues | Arrow keys follow the cursor |
 
 Drags stay on the row or column they start in, and only change cells that
@@ -54,6 +55,10 @@ Dimmed clue numbers are runs your marks already complete; a red clue means
 that line's marks can no longer fit it. **Options…** sets the theme
 (Auto / Light / Dark), turns that warning off, and can switch on auto-X, which marks the rest of a line empty as soon as its
 filled cells match the clue.
+
+Stuck? **Hint** fills in one cell that logic can deduce from your marks and
+highlights the row or column that proves it. If you've made a mistake, it
+points that out instead. Hints used are shown when you solve the puzzle.
 
 ## Development
 

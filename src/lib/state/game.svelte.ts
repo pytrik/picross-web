@@ -1,4 +1,5 @@
 import { boardSatisfies, colIndices, completedRuns, computeClues, lineClue, rowIndices, sameClue } from '../puzzle/clues.ts';
+import { findHint, wrongCells, type Hint } from '../puzzle/hint.ts';
 import { lineFeasible } from '../puzzle/solver.ts';
 import { MARK_X, UNKNOWN, type Clues, type PuzzleDef } from '../puzzle/types.ts';
 import type { LoadedPuzzle } from '../source/index.ts';
@@ -27,6 +28,8 @@ export class Game {
 
   board = $state.raw<Uint8Array>(new Uint8Array());
   checks = $state(0);
+  /** Hints that filled a cell (SPEC §6.9). */
+  hints = $state(0);
   solved = $state(false);
   canUndo = $state(false);
   canRedo = $state(false);
@@ -76,6 +79,7 @@ export class Game {
     this.board = saved?.board ?? new Uint8Array(puzzle.def.cells.length);
     this.#elapsedBase = saved?.elapsedMs ?? 0;
     this.checks = saved?.checks ?? 0;
+    this.hints = saved?.hints ?? 0;
     this.solved = saved?.solved ?? false;
   }
 
@@ -216,14 +220,26 @@ export class Game {
   /** Cells contradicting the solution (SPEC §6.5). Counts as a check. */
   check(): number[] {
     this.checks++;
-    const wrong: number[] = [];
-    const sol = this.def.cells;
-    this.board.forEach((v, i) => {
-      if (v === UNKNOWN) return;
-      if (v === MARK_X ? sol[i] !== 0 : sol[i] !== v) wrong.push(i);
-    });
     this.#scheduleSave();
-    return wrong;
+    return wrongCells(this.def, this.board);
+  }
+
+  /**
+   * Fills one cell that line logic forces (SPEC §6.9) as its own undo step.
+   * Only a filled cell counts as a hint; a wrong board or a stuck solver
+   * changes nothing. No auto-X: a hint is not a stroke.
+   */
+  hint(cursor = 0): Hint | null {
+    if (this.solved) return null;
+    const hint = findHint(this.def, this.clues, this.board, cursor);
+    if (hint.kind !== 'cell') return hint;
+    this.beginStroke();
+    this.setCell(hint.cell, hint.value);
+    this.#stroke = null;
+    this.hints++;
+    this.#history.push({ cells: [hint.cell], before: [UNKNOWN], after: [hint.value] });
+    this.#afterChange();
+    return hint;
   }
 
   restart(): void {
@@ -231,6 +247,7 @@ export class Game {
     this.#elapsedBase = 0;
     this.#runningSince = null;
     this.checks = 0;
+    this.hints = 0;
     this.solved = false;
     this.#history.clear();
     this.canUndo = this.canRedo = false;
@@ -253,6 +270,7 @@ export class Game {
       board: this.board,
       elapsedMs: this.elapsedMs,
       checks: this.checks,
+      hints: this.hints,
       solved: this.solved,
       hash: this.hash,
     });

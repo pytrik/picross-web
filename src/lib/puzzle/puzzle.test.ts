@@ -12,6 +12,7 @@ import {
 } from './codec.ts';
 import { boardSatisfies, completedRuns, computeClues, lineClue } from './clues.ts';
 import { generatePuzzle, mulberry32 } from './generator.ts';
+import { findHint } from './hint.ts';
 import { fnv1a64 } from './key.ts';
 import { lineFeasible, solveGrid, solveLine, masksToCells } from './solver.ts';
 import { MARK_X, PuzzleError, type PuzzleDef } from './types.ts';
@@ -201,6 +202,56 @@ test('generator yields valid, line-solvable puzzles for every color count', () =
       assert.ok(def, `generated ${colors} colors`);
       assert.ok(solveGrid(computeClues(def), def.width, def.height, colors).solved);
       assert.doesNotThrow(() => decodePuzzle(encodePuzzle(def).slice(2)));
+    }
+  }
+});
+
+// --- hint (SPEC §6.9) --------------------------------------------------------
+
+test('hint picks the line forcing most cells, nearest the cursor', () => {
+  const def = grid(['11111', '1....', '1....', '.....', '.....']);
+  const clues = computeClues(def);
+  const empty = new Uint8Array(25);
+  // Rows 0, 3 and 4 each force all 5 cells; the cursor breaks the tie.
+  assert.deepEqual(findHint(def, clues, empty, 0), { kind: 'cell', cell: 0, value: 1, line: { axis: 'row', index: 0 } });
+  assert.deepEqual(findHint(def, clues, empty, 23), { kind: 'cell', cell: 23, value: MARK_X, line: { axis: 'row', index: 4 } });
+});
+
+test('hint deduces from current marks, never past wrong ones', () => {
+  const def = grid(['11111', '1....', '1....', '.....', '.....']);
+  const clues = computeClues(def);
+  const board = new Uint8Array(25);
+  board[6] = 1; // wrong: (1, 1) is empty
+  board[5] = MARK_X; // wrong: (1, 0) is filled
+  assert.deepEqual(findHint(def, clues, board), { kind: 'wrong', cells: [5, 6] });
+
+  // With rows 0, 3, 4 done, column 0 (clue 3) is forced from the marks.
+  const done = Uint8Array.from(grid(['11111', '.....', '.....', 'xxxxx', 'xxxxx']).cells);
+  for (let i = 15; i < 25; i++) done[i] = MARK_X;
+  const hint = findHint(def, clues, done, 0);
+  assert.equal(hint.kind, 'cell');
+  if (hint.kind === 'cell') assert.equal(def.cells[hint.cell], hint.value === MARK_X ? 0 : hint.value);
+});
+
+test('hint reports when line logic is stuck', () => {
+  const def = grid(['1.', '.1']);
+  assert.deepEqual(findHint(def, computeClues(def), new Uint8Array(4)), { kind: 'stuck' });
+});
+
+test('repeated hints solve a generated puzzle, always with the solution value', () => {
+  const rng = mulberry32(7);
+  for (const colors of [1, 3, 6]) {
+    const def = generatePuzzle({ width: 12, height: 9, palette: PALETTE.slice(0, colors), density: 0.5 }, rng)!;
+    const clues = computeClues(def);
+    const board = new Uint8Array(def.cells.length);
+    for (let n = 0; !boardSatisfies(clues, def.width, def.height, board); n++) {
+      assert.ok(n < board.length, 'at most one hint per cell');
+      const hint = findHint(def, clues, board, n % board.length);
+      assert.equal(hint.kind, 'cell');
+      if (hint.kind !== 'cell') return;
+      assert.equal(board[hint.cell], 0, 'only unknown cells');
+      assert.equal(hint.value === MARK_X ? 0 : hint.value, def.cells[hint.cell]);
+      board[hint.cell] = hint.value;
     }
   }
 });

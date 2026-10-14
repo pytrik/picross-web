@@ -29,7 +29,9 @@ Implemented (0.4.0):
 - Assists (§6.5), zoom & pan (§6.7), recent puzzles (§6.8), options and themes
   (§8).
 
-Still to do: the features in §1.3. With those, everything except database
+Implemented since 0.4.0: Hint (§6.9).
+
+Still to do: the other features in §1.3. With those, everything except database
 puzzles keeps working offline from the single file; database puzzles and the
 Library need the network (§11).
 
@@ -52,7 +54,7 @@ Each feature gets its own spec section before work starts. That section fills
 in the design; the requirements below are fixed. Every feature MUST be covered
 by unit and e2e tests (§10.7) and documented in README.md.
 
-**Hint**
+**Hint** (done: §6.9)
 
 - A **Hint** toolbar button (and a key) fills in one still-unknown cell whose
   value line logic forces from the current marks (§5.3), with its value (color
@@ -318,8 +320,8 @@ Standard multi-color line solver:
 - Contradiction (empty set) means the clues are inconsistent → treat as a
   generator bug (assert).
 
-The same solver is reused by tests, line errors (§6.5), and the planned hint,
-difficulty rating and editor (§1.3).
+The same solver is reused by tests, line errors (§6.5), the hint (§6.9), and
+the planned difficulty rating and editor (§1.3).
 
 ### 5.4 Palette presets
 
@@ -390,6 +392,7 @@ The user MAY override individual swatches. Duplicate colors MUST be prevented
 | Shift + Arrows | Move and apply the last action (keyboard drag) |
 | `1`–`6` | Select color |
 | `+` / `=`, `-` | Zoom in / out (§6.7) |
+| `H` | Hint (§6.9) |
 | Ctrl/Cmd+Z, Ctrl+Y / Ctrl/Cmd+Shift+Z | Undo / redo |
 
 Moving the cursor scrolls it into view when the board is zoomed, clear of the
@@ -468,6 +471,45 @@ are not stored (§7.3). Records written before the `hash` field existed
 (§7.1) cannot be opened and are left out of the list (they still age out of
 the LRU normally).
 
+### 6.9 Hint
+
+**Hint** in the toolbar (key `H`) asks the line solver (§5.3) for the next
+step. Disabled on a solved board. Implemented in `lib/puzzle/hint.ts`.
+
+1. **Wrong marks first.** If any mark contradicts the solution (the same test
+   as the mistake check, §6.5), nothing is deduced: the wrong cells are
+   highlighted for 2 s exactly like a check, the message "Fix the highlighted
+   mistake(s) first." is shown, and the board is unchanged. This counts as
+   neither a hint nor a check.
+2. **Knowledge from the marks.** Each cell starts as: unknown → every state,
+   X → empty, filled → its color.
+3. **Pick a line.** Every row and column is solved against that knowledge.
+   Among the lines that force at least one *unknown* cell to a single state,
+   take the one forcing the most such cells (the most obvious deduction); ties
+   go to the line nearest the board cursor (row distance for rows, column
+   distance for columns). Within it, the forced cell nearest the cursor is
+   chosen.
+4. **Partial facts.** With several colors, line logic also learns facts the
+   board can't show ("this cell is not red"), so the marks alone may force
+   nothing even on a line-solvable puzzle. If no line forces a cell, the
+   narrowed knowledge of every line is applied at once and step 3 repeats.
+   The highlighted line is then the one that makes the final deduction.
+5. **Stuck.** If a round narrows nothing, line logic can't determine any
+   further cell (only possible for a puzzle that isn't line-solvable): the
+   message "Line logic can't determine any more cells." is shown and the
+   board is unchanged.
+6. **Apply.** The chosen cell gets its value (color, or X for empty) as its
+   own undo step. It does not trigger auto-X (it is not a stroke), starts the
+   timer like any change, and may solve the puzzle. The `hints` counter goes
+   up by one (undo does not refund it). The cursor moves to the cell
+   (scrolling it into view), and for 2 s the cell is outlined and the line
+   and its clue are highlighted. Because the highlight is color-only, a
+   status message says the same in words, e.g. "Hint: column 7 forces row 3,
+   column 7 to be filled red."
+
+`hints` is persisted (§7.1), cleared by **Restart**, and shown in the win
+dialog under "Hints used".
+
 ---
 
 ## 7. Persistence (localStorage)
@@ -485,12 +527,14 @@ picross:p:<puzzleKey>  →  JSON
   "board": "<base64url>",   // bit-packed like §4.2, value N+1 = X
   "elapsedMs": 123456,
   "checks": 2,
+  "hints": 1,               // added after 0.4.0 (§6.9); missing = 0
   "solved": false,
   "updatedAt": 1760000000000
 }
 ```
 
-`hash` was added in 0.4.0; readers MUST accept records without it.
+`hash` was added in 0.4.0 and `hints` after it; readers MUST accept records
+without them.
 `board` packing uses `bits = ceil(log2(N + 2))`. Writes are debounced (~300 ms)
 and flushed on `pagehide`/`visibilitychange:hidden`.
 
@@ -526,7 +570,7 @@ Unsolved boards with zero progress are not stored.
 - **Options** (dialog): theme radio buttons (Auto / Light / Dark), and
   checkboxes "Flag impossible lines" (`showErrors`) and "Auto-X finished
   lines" (`autoX`) (§6.5). Changes apply immediately and persist.
-- **Toolbar**: color swatches + X tool, undo, redo, check, restart, zoom
+- **Toolbar**: color swatches + X tool, undo, redo, check, hint, restart, zoom
   −/+ (§6.7), timer, "Solved" badge.
 - **Board**: column clues on top (stacked bottom-aligned), row clues on the
   left (right-aligned), grid with a thicker rule every 5 cells.
@@ -594,6 +638,7 @@ src/
       codec.ts          bit packing, base64url, hash encode/decode, validation
       key.ts            FNV-1a puzzle key
       solver.ts         line solver (§5.3), line feasibility (§6.5)
+      hint.ts           next hint, wrong cells (§6.9)
       generator.ts      seed + repair loop (§5.2)
       palettes.ts       presets (§5.4)
     workers/
@@ -680,19 +725,24 @@ modules (`*.svelte.ts`) are compiled on the fly by a Node loader hook
 - generator: N random runs per color count produce valid, line-solvable,
   validated definitions.
 - completion-hint logic; line feasibility.
+- hint: line choice and tie-breaks, wrong marks, stuck, partial facts
+  (repeated hints solve generated multi-color puzzles, always with the
+  solution's value).
 - LRU eviction; recent list (hash stored, legacy records skipped).
 - settings loading/clamping and palette overrides; color naming; date
   formatting; zoom limits and anchoring.
 - `Game`: strokes + undo/redo, hints, line errors, auto-X (incl. undo),
   stroke cancel, timer (start, pause/resume, resume on load), solve, check,
-  restart, loading saved progress.
+  restart, loading saved progress, hints (undo step, counting, persistence,
+  legacy records without `hints`).
 
 End-to-end: Playwright Test (`tests/e2e/`, `npm run e2e`) against the
 production `dist/index.html`, served by `scripts/serve.mjs`, using the system
 Google Chrome (`channel: 'chrome'`). Desktop project plus a Pixel 7 mobile
 project for tests tagged `@mobile`. Any console error fails a test. Covers
 input (click, right-click, drag + axis lock, keyboard), undo/redo, reload
-persistence, mistake check, solving + win dialog actions, multi-color, Back
+persistence, mistake check, hint (fill + highlight + undo, wrong marks,
+stuck, count on win), solving + win dialog actions, multi-color, Back
 navigation, restart, invalid links, palette validation, `file://` offline use,
 screen-reader labels and grid structure, pre-paint theme, options (line
 errors, auto-X), run counter, recent puzzles, zoom buttons + sticky clues,

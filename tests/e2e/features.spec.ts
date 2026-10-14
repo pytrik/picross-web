@@ -1,4 +1,4 @@
-import { boardValues, cell, cells, clickCell, expect, gotoPuzzle, test } from './helpers.ts';
+import { boardValues, cell, cells, clickCell, expect, gotoPuzzle, solve, test } from './helpers.ts';
 
 const X = 255;
 
@@ -191,4 +191,53 @@ test('theme is chosen in Options and persists', async ({ page }) => {
   await page.reload();
   await expect(cells(page)).toHaveCount(25);
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+});
+
+test('hint fills a forced cell, shows its line, and is one undo step', async ({ page }) => {
+  // Row 1 [5 black] and rows 2, 4, 5 [0] force five cells each; the cursor
+  // (top-left) breaks the tie in favour of row 1.
+  await gotoPuzzle(page, ['11111', '.....', '..2..', '.....', '.....']);
+  await page.getByRole('button', { name: 'Hint' }).click();
+  await expect(cell(page, 0)).toHaveAttribute('data-v', '1');
+  expect((await boardValues(page)).filter((v) => v !== 0)).toHaveLength(1);
+  await expect(cell(page, 0)).toHaveClass(/hint-cell/);
+  await expect(rowClue(page, 0)).toHaveClass(/hint/);
+  await expect(page.getByRole('status')).toHaveText(/^Hint: row 1 forces row 1, column 1 to be filled \w+\.$/);
+
+  await page.keyboard.press('Control+z');
+  expect(await boardValues(page)).toEqual(new Array(25).fill(0));
+  await page.keyboard.press('h');
+  await expect(cell(page, 0)).toHaveAttribute('data-v', '1');
+});
+
+test('hint on a wrong board points out the mistake and changes nothing', async ({ page }) => {
+  await gotoPuzzle(page, ['11111', '.....', '..2..', '.....', '.....']);
+  await clickCell(page, 7);
+  await page.getByRole('button', { name: 'Hint' }).click();
+  await expect(page.getByRole('status')).toHaveText('Fix the highlighted mistake first.');
+  await expect(page.locator('.cell.wrong')).toHaveCount(1);
+  await expect(cell(page, 7)).toHaveClass(/wrong/);
+  expect((await boardValues(page)).filter((v) => v !== 0)).toHaveLength(1);
+});
+
+test('hint says when line logic is stuck', async ({ page }) => {
+  // Every line is [1]: any permutation fits, so nothing is forced.
+  await gotoPuzzle(page, ['1....', '.1...', '..1..', '...1.', '....1']);
+  await page.getByRole('button', { name: 'Hint' }).click();
+  await expect(page.getByRole('status')).toHaveText('Line logic can’t determine any more cells.');
+  expect(await boardValues(page)).toEqual(new Array(25).fill(0));
+});
+
+test('hints used survive a reload and show on win; Hint is disabled once solved', async ({ page }) => {
+  await gotoPuzzle(page, ['11111', '.....', '..2..', '.....', '.....']);
+  await page.keyboard.press('h');
+  await page.keyboard.press('h');
+  await expect(page.locator('.cell[data-v="0"]')).toHaveCount(23);
+  await page.reload();
+  await expect(page.locator('.cell[data-v="0"]')).toHaveCount(23);
+  await solve(page);
+  const dialog = page.getByRole('dialog', { name: 'Solved!' });
+  await expect(dialog.locator('dt', { hasText: 'Hints used' }).locator('+ dd')).toHaveText('2');
+  await dialog.getByRole('button', { name: 'Close' }).click();
+  await expect(page.getByRole('button', { name: 'Hint' })).toBeDisabled();
 });

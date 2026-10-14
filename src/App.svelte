@@ -9,6 +9,7 @@
   import OptionsDialog from './components/OptionsDialog.svelte';
   import RecentDialog from './components/RecentDialog.svelte';
   import { parseHash } from './lib/puzzle/codec.ts';
+  import type { LineRef } from './lib/puzzle/hint.ts';
   import { MARK_X } from './lib/puzzle/types.ts';
   import { fromDefinition, resolvePuzzle, type LoadedPuzzle } from './lib/source/index.ts';
   import { Game } from './lib/state/game.svelte.ts';
@@ -28,6 +29,8 @@
   let xMode = $state(false);
   let wrong = $state.raw(new Set<number>());
   let wrongTimer: ReturnType<typeof setTimeout> | undefined;
+  let hint = $state.raw<{ line: LineRef; cell: number } | null>(null);
+  let hintTimer: ReturnType<typeof setTimeout> | undefined;
 
   // Zoom (SPEC §6.7): reset for every puzzle, not persisted.
   let board = $state<ReturnType<typeof Board>>();
@@ -76,6 +79,7 @@
     activeColor = 1;
     xMode = false;
     wrong = new Set();
+    hint = null;
     if (document.visibilityState === 'visible') next.resume();
   }
 
@@ -148,12 +152,45 @@
 
   // --- actions ---------------------------------------------------------------
 
+  function showWrong(cells: number[]) {
+    clearTimeout(wrongTimer);
+    wrong = new Set(cells);
+    wrongTimer = setTimeout(() => (wrong = new Set()), 2000);
+  }
+
   function check() {
     if (!game || game.solved) return;
-    clearTimeout(wrongTimer);
-    wrong = new Set(game.check());
-    if (wrong.size === 0) showToast('No mistakes so far.');
-    wrongTimer = setTimeout(() => (wrong = new Set()), 2000);
+    const cells = game.check();
+    showWrong(cells);
+    if (cells.length === 0) showToast('No mistakes so far.');
+  }
+
+  /** SPEC §6.9. The toast says in words what the highlight shows. */
+  function useHint() {
+    if (!game || game.solved) return;
+    const result = game.hint(board?.cursorIndex() ?? 0);
+    if (!result) return;
+    if (result.kind === 'wrong') {
+      showWrong(result.cells);
+      const n = result.cells.length;
+      showToast(`Fix the ${n === 1 ? 'highlighted mistake' : `${n} highlighted mistakes`} first.`);
+      return;
+    }
+    if (result.kind === 'stuck') {
+      showToast('Line logic can’t determine any more cells.');
+      return;
+    }
+    const { width } = game.def;
+    const r = Math.floor(result.cell / width) + 1;
+    const c = (result.cell % width) + 1;
+    const what =
+      result.value === MARK_X ? 'empty' : game.colors === 1 ? 'filled' : `filled ${paletteNames(game.def.palette)[result.value - 1]}`;
+    const by = result.line.axis === 'row' ? `row ${r}` : `column ${c}`;
+    showToast(`Hint: ${by} forces row ${r}, column ${c} to be ${what}.`);
+    board?.moveCursor(result.cell);
+    clearTimeout(hintTimer);
+    hint = { line: result.line, cell: result.cell };
+    hintTimer = setTimeout(() => (hint = null), 2000);
   }
 
   async function restart() {
@@ -161,6 +198,7 @@
     if (!(await showConfirm('Clear the board and timer for this puzzle?'))) return;
     game.restart();
     wrong = new Set();
+    hint = null;
   }
 
   let optionsDialog: ReturnType<typeof OptionsDialog>;
@@ -197,6 +235,9 @@
     } else if (!mod && !e.altKey && /^[1-6]$/.test(e.key) && Number(e.key) <= game.colors) {
       activeColor = Number(e.key);
       xMode = false;
+    } else if (!mod && !e.altKey && (e.key === 'h' || e.key === 'H')) {
+      e.preventDefault();
+      useHint();
     } else if (!mod && !e.altKey && (e.key === '+' || e.key === '=' || e.key === '-')) {
       e.preventDefault();
       board?.zoomBy(e.key === '-' ? 1 / ZOOM_STEP : ZOOM_STEP);
@@ -296,6 +337,7 @@
       <button class="secondary" onclick={() => game?.undo()} disabled={!game.canUndo || game.solved} title="Undo (Ctrl+Z)">Undo</button>
       <button class="secondary" onclick={() => game?.redo()} disabled={!game.canRedo || game.solved} title="Redo (Ctrl+Y)">Redo</button>
       <button class="secondary" onclick={check} disabled={game.solved} title="Highlight mistakes">Check</button>
+      <button class="secondary" onclick={useHint} disabled={game.solved} title="Fill one cell line logic forces (H)">Hint</button>
       <button class="secondary" onclick={restart} title="Clear the board">Restart</button>
     </div>
 
@@ -331,6 +373,7 @@
       {activeColor}
       {xMode}
       {wrong}
+      {hint}
       {bg}
       showErrors={settings.showErrors}
     />
@@ -390,6 +433,8 @@
       <dd>{formatTime(game.elapsedMs)}</dd>
       <dt>Checks used</dt>
       <dd>{game.checks}</dd>
+      <dt>Hints used</dt>
+      <dd>{game.hints}</dd>
     </dl>
     <div class="actions">
       <button class="secondary" onclick={() => winDialog.close()}>Close</button>
