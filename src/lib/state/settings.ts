@@ -14,6 +14,10 @@ export interface Settings {
   overrides: (string | null)[];
   density: number;
   theme: Theme;
+  /** Tint clues of lines that can no longer fit (SPEC §6.5). */
+  showErrors: boolean;
+  /** X the rest of a line once its fills match the clue (SPEC §6.5). */
+  autoX: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -24,6 +28,8 @@ export const DEFAULT_SETTINGS: Settings = {
   overrides: [],
   density: 0.58,
   theme: 'system',
+  showErrors: true,
+  autoX: false,
 };
 
 export const MIN_DENSITY = 0.4;
@@ -46,6 +52,8 @@ export function loadSettings(storage: KV | null): Settings {
       : [],
     density: clamp(s.density, MIN_DENSITY, MAX_DENSITY, d.density),
     theme: s.theme === 'light' || s.theme === 'dark' ? s.theme : 'system',
+    showErrors: typeof s.showErrors === 'boolean' ? s.showErrors : d.showErrors,
+    autoX: typeof s.autoX === 'boolean' ? s.autoX : d.autoX,
   };
 }
 

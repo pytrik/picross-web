@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { flushSync, onMount } from 'svelte';
   import { MARK_X, UNKNOWN, type Run } from '../lib/puzzle/types.ts';
   import { clickTarget, type Game } from '../lib/state/game.svelte.ts';
   import { contrast, paletteNames, textOn } from '../lib/ui/format.ts';
+  import { anchoredScroll, clampZoom, maxZoom } from '../lib/ui/zoom.ts';
 
   interface Props {
     game: Game;
@@ -14,8 +15,23 @@
     wrong: Set<number>;
     /** Current page background, for clue contrast. */
     bg: string;
+    /** Tint clues of impossible lines (SPEC §6.5). */
+    showErrors: boolean;
+    /** Zoom factor, 1 = fitted (SPEC §6.7). */
+    zoom: number;
+    /** Highest zoom factor for the current fit (read by the toolbar). */
+    zoomLimit?: number;
   }
-  let { game, activeColor, xMode, wrong, bg }: Props = $props();
+  let {
+    game,
+    activeColor,
+    xMode,
+    wrong,
+    bg,
+    showErrors,
+    zoom = $bindable(),
+    zoomLimit = $bindable(1),
+  }: Props = $props();
 
   const W = $derived(game.def.width);
   const H = $derived(game.def.height);
@@ -35,10 +51,15 @@
 
   const maxRowRuns = $derived(Math.max(1, ...game.clues.rows.map((c) => c.length)));
   const maxColRuns = $derived(Math.max(1, ...game.clues.cols.map((c) => c.length)));
-  const cell = $derived.by(() => {
+  /** Cell size that fits the viewport, before zooming. */
+  const fitCell = $derived.by(() => {
     const byW = (wrapW - 8) / (W + maxRowRuns * CLUE);
     const byH = (viewH - top - 16) / (H + maxColRuns * CLUE);
     return Math.max(14, Math.min(40, Math.floor(Math.min(byW, byH))));
+  });
+  const cell = $derived(Math.round(fitCell * clampZoom(zoom, fitCell)));
+  $effect(() => {
+    zoomLimit = maxZoom(fitCell);
   });
 
   function measure() {
@@ -50,6 +71,30 @@
     window.addEventListener('resize', measure);
     return () => window.removeEventListener('resize', measure);
   });
+
+  // --- zoom & pan (SPEC §6.7) ------------------------------------------------
+
+  /** Zooms so the content under (clientX, clientY) stays put. */
+  function setZoom(next: number, clientX: number, clientY: number) {
+    const before = cell;
+    zoom = clampZoom(next, fitCell);
+    flushSync();
+    if (cell === before) return;
+    const rect = wrapEl.getBoundingClientRect();
+    const ratio = cell / before;
+    wrapEl.scrollLeft = anchoredScroll(wrapEl.scrollLeft, clientX - rect.left, ratio);
+    wrapEl.scrollTop = anchoredScroll(wrapEl.scrollTop, clientY - rect.top, ratio);
+  }
+
+  /** Zooms around the centre of the visible board (toolbar buttons, keys). */
+  export function zoomBy(factor: number) {
+    const rect = wrapEl.getBoundingClientRect();
+    setZoom(zoom * factor, rect.left + rect.width / 2, rect.top + rect.height / 2);
+  }
+
+  // Sticky clue sizes, so keyboard scrolling keeps the cursor clear of them.
+  let colCluesH = $state(0);
+  let rowCluesW = $state(0);
 
   // --- clues -----------------------------------------------------------------
 
@@ -90,7 +135,9 @@
     return `Row ${Math.floor(i / W) + 1}, column ${(i % W) + 1}, ${state}`;
   }
 
-  // --- pointer input (SPEC §6.3) ---------------------------------------------
+  const lineError = (errors: boolean[], i: number) => showErrors && !game.solved && errors[i]!;
+
+  // --- pointer input (SPEC §6.3, §6.7) ----------------------------------------
 
   interface Drag {
     pointerId: number;
@@ -103,7 +150,25 @@
   }
   let drag: Drag | null = null;
 
+  /** Run counter badge (SPEC §6.3). */
+  let counter = $state<{ n: number; x: number; y: number } | null>(null);
+
+  /** Active touch points, for pinch/pan. */
+  const touches = new Map<number, { x: number; y: number }>();
+  /** Two-finger gesture; stays set until every finger has lifted. */
+  let gesture: { dist: number; zoom: number; x: number; y: number } | null = null;
+  /** One finger panning from the clue area. */
+  let pan: { pointerId: number; x: number; y: number } | null = null;
+
+  function touchSpan() {
+    const [a, b] = [...touches.values()] as [{ x: number; y: number }, { x: number; y: number }];
+    return { dist: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  }
+
   function cellAt(e: PointerEvent, clampToGrid: boolean): [number, number] | null {
+    // When scrolled, the sticky clues cover some cells: only the grid itself
+    // counts as a hit, except while dragging (clamped).
+    if (!clampToGrid && !gridEl.contains(e.target as Node)) return null;
     const rect = gridEl.getBoundingClientRect();
     let c = Math.floor((e.clientX - rect.left) / cell);
     let r = Math.floor((e.clientY - rect.top) / cell);
@@ -118,12 +183,36 @@
   }
 
   function onPointerDown(e: PointerEvent) {
-    if (game.solved || (e.button !== 0 && e.button !== 2) || drag) return;
+    if (e.pointerType === 'touch') {
+      touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (touches.size >= 2) {
+        // A second finger turns any drawing or panning into a pinch/pan.
+        if (drag) {
+          game.cancelStroke();
+          drag = null;
+          counter = null;
+        }
+        pan = null;
+        const span = touchSpan();
+        gesture = { dist: span.dist, zoom, x: span.x, y: span.y };
+        wrapEl.setPointerCapture(e.pointerId);
+        return;
+      }
+      if (gesture) return;
+    }
+    if ((e.button !== 0 && e.button !== 2) || drag) return;
     const pos = cellAt(e, false);
-    if (!pos) return;
+    if (!pos) {
+      if (e.pointerType === 'touch') {
+        pan = { pointerId: e.pointerId, x: e.clientX, y: e.clientY };
+        wrapEl.setPointerCapture(e.pointerId);
+      }
+      return;
+    }
+    if (game.solved) return;
     e.preventDefault();
     gridEl.focus({ preventScroll: true });
-    gridEl.setPointerCapture(e.pointerId);
+    wrapEl.setPointerCapture(e.pointerId);
     const [r, c] = pos;
     const index = r * W + c;
     const tool = e.button === 2 || xMode ? MARK_X : activeColor;
@@ -135,6 +224,25 @@
   }
 
   function onPointerMove(e: PointerEvent) {
+    if (touches.has(e.pointerId)) touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (gesture) {
+      if (touches.size < 2) return;
+      const span = touchSpan();
+      setZoom((gesture.zoom * span.dist) / gesture.dist, span.x, span.y);
+      wrapEl.scrollLeft -= span.x - gesture.x;
+      wrapEl.scrollTop -= span.y - gesture.y;
+      gesture.x = span.x;
+      gesture.y = span.y;
+      return;
+    }
+    if (pan) {
+      if (e.pointerId !== pan.pointerId) return;
+      wrapEl.scrollLeft -= e.clientX - pan.x;
+      wrapEl.scrollTop -= e.clientY - pan.y;
+      pan.x = e.clientX;
+      pan.y = e.clientY;
+      return;
+    }
     if (!drag) {
       const pos = e.pointerType === 'mouse' ? cellAt(e, false) : null;
       hover = pos ? pos[0] * W + pos[1] : null;
@@ -153,13 +261,22 @@
     for (let k = Math.min(from, to); k <= Math.max(from, to); k++) {
       applyTo(drag.axis === 'row' ? r * W + k : k * W + c, drag.orig, drag.target);
     }
+    const n = Math.abs(to - from) + 1;
+    counter = n >= 2 ? { n, x: e.clientX, y: e.clientY } : null;
     cursor = r * W + c;
     hover = e.pointerType === 'mouse' ? cursor : null;
   }
 
   function onPointerUp(e: PointerEvent) {
+    touches.delete(e.pointerId);
+    if (gesture) {
+      if (touches.size === 0) gesture = null;
+      return;
+    }
+    if (pan?.pointerId === e.pointerId) pan = null;
     if (!drag || e.pointerId !== drag.pointerId) return;
     drag = null;
+    counter = null;
     game.endStroke();
   }
 
@@ -188,6 +305,7 @@
       const r = Math.min(H - 1, Math.max(0, Math.floor(cursor / W) + move[0]));
       const c = Math.min(W - 1, Math.max(0, (cursor % W) + move[1]));
       cursor = r * W + c;
+      document.getElementById(`cell-${cursor}`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
       if (e.shiftKey && lastKey && !game.solved) keyStroke(cursor, lastKey.orig, lastKey.target);
       return;
     }
@@ -209,94 +327,137 @@
   }
 </script>
 
-<div class="wrap" bind:this={wrapEl} bind:clientWidth={wrapW}>
+<!-- Pointer input is handled on the scroll container so touches on the clues
+     can pan (SPEC §6.7); keyboard input lives on the focusable grid. -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div
+  class="wrap"
+  bind:this={wrapEl}
+  bind:clientWidth={wrapW}
+  style:max-height="{Math.max(160, viewH - top - 8)}px"
+  style:scroll-padding-top="{colCluesH + 2}px"
+  style:scroll-padding-left="{rowCluesW + 2}px"
+  onpointerdown={onPointerDown}
+  onpointermove={onPointerMove}
+  onpointerup={onPointerUp}
+  onpointercancel={onPointerUp}
+  onpointerleave={() => (hover = null)}
+>
   <div
     class="board"
     class:solved={game.solved}
     style:--cell="{cell}px"
     style:--clue="{Math.round(cell * CLUE)}px"
     style:--font="{Math.max(9, Math.round(cell * 0.5))}px"
-    style:grid-template-columns="auto {W * cell}px"
   >
-    <div class="corner"></div>
+    <div class="top">
+      <div class="corner" style:width="{rowCluesW}px"></div>
 
-    <div class="col-clues" role="list" aria-label="Column clues" style:grid-template-columns="repeat({W}, var(--cell))">
-      {#each game.clues.cols as runs, c (c)}
-        {@const done = game.colHints[c]!}
-        <div class="col-clue" role="listitem" class:hl={c === hlCol} aria-label="Column {c + 1} clue: {describeClue(runs)}">
-          {#each runs as run, k (k)}
-            <span class="num" class:done={done[k]} class:chip={clueStyle(run).startsWith('background')} style={clueStyle(run)}>
-              {run.len}
-            </span>
-          {:else}
-            <span class="num zero">0</span>
-          {/each}
-        </div>
-      {/each}
+      <div
+        class="col-clues"
+        role="list"
+        aria-label="Column clues"
+        bind:offsetHeight={colCluesH}
+        style:grid-template-columns="repeat({W}, var(--cell))"
+      >
+        {#each game.clues.cols as runs, c (c)}
+          {@const done = game.colHints[c]!}
+          {@const err = lineError(game.colErrors, c)}
+          <div
+            class="col-clue"
+            role="listitem"
+            class:hl={c === hlCol}
+            class:err
+            aria-label="Column {c + 1} clue: {describeClue(runs)}{err ? ', impossible' : ''}"
+          >
+            {#each runs as run, k (k)}
+              <span class="num" class:done={done[k]} class:chip={clueStyle(run).startsWith('background')} style={clueStyle(run)}>
+                {run.len}
+              </span>
+            {:else}
+              <span class="num zero">0</span>
+            {/each}
+          </div>
+        {/each}
+      </div>
     </div>
 
-    <div class="row-clues" role="list" aria-label="Row clues" style:grid-template-rows="repeat({H}, var(--cell))">
-      {#each game.clues.rows as runs, r (r)}
-        {@const done = game.rowHints[r]!}
-        <div class="row-clue" role="listitem" class:hl={r === hlRow} aria-label="Row {r + 1} clue: {describeClue(runs)}">
-          {#each runs as run, k (k)}
-            <span class="num" class:done={done[k]} class:chip={clueStyle(run).startsWith('background')} style={clueStyle(run)}>
-              {run.len}
-            </span>
-          {:else}
-            <span class="num zero">0</span>
-          {/each}
-        </div>
-      {/each}
-    </div>
+    <div class="body">
+      <div
+        class="row-clues"
+        role="list"
+        aria-label="Row clues"
+        bind:offsetWidth={rowCluesW}
+        style:grid-template-rows="repeat({H}, var(--cell))"
+      >
+        {#each game.clues.rows as runs, r (r)}
+          {@const done = game.rowHints[r]!}
+          {@const err = lineError(game.rowErrors, r)}
+          <div
+            class="row-clue"
+            role="listitem"
+            class:hl={r === hlRow}
+            class:err
+            aria-label="Row {r + 1} clue: {describeClue(runs)}{err ? ', impossible' : ''}"
+          >
+            {#each runs as run, k (k)}
+              <span class="num" class:done={done[k]} class:chip={clueStyle(run).startsWith('background')} style={clueStyle(run)}>
+                {run.len}
+              </span>
+            {:else}
+              <span class="num zero">0</span>
+            {/each}
+          </div>
+        {/each}
+      </div>
 
-    <!-- Only the cells are the ARIA grid: rows of gridcells, nothing else. -->
-    <div
-      class="grid"
-      bind:this={gridEl}
-      style:grid-template-columns="repeat({W}, var(--cell))"
-      role="grid"
-      aria-label="Picross board, {W} by {H}{game.solved ? ', solved' : ''}"
-      aria-rowcount={H}
-      aria-colcount={W}
-      aria-activedescendant="cell-{cursor}"
-      tabindex="0"
-      onkeydown={onKeyDown}
-      onfocus={() => (focused = true)}
-      onblur={() => (focused = false)}
-      onpointerdown={onPointerDown}
-      onpointermove={onPointerMove}
-      onpointerup={onPointerUp}
-      onpointercancel={onPointerUp}
-      onpointerleave={() => (hover = null)}
-      oncontextmenu={(e) => e.preventDefault()}
-    >
-      {#each { length: H } as _, r (r)}
-        <div class="row" role="row">
-          {#each { length: W } as _, c (c)}
-            {@const i = r * W + c}
-            {@const v = game.board[i]!}
-            {@const filled = v !== UNKNOWN && v !== MARK_X}
-            <div
-              id="cell-{i}"
-              role="gridcell"
-              class="cell"
-              class:x={v === MARK_X && !game.solved}
-              class:hl={!filled && (r === hlRow || c === hlCol)}
-              class:t5r={(c + 1) % 5 === 0 && c < W - 1}
-              class:t5b={(r + 1) % 5 === 0 && r < H - 1}
-              class:wrong={wrong.has(i)}
-              class:cursor={focused && i === cursor && hover === null}
-              style:background={filled ? palette[v - 1] : undefined}
-              aria-label={cellLabel(i)}
-              data-v={v}
-            ></div>
-          {/each}
-        </div>
-      {/each}
+      <!-- Only the cells are the ARIA grid: rows of gridcells, nothing else. -->
+      <div
+        class="grid"
+        bind:this={gridEl}
+        style:grid-template-columns="repeat({W}, var(--cell))"
+        role="grid"
+        aria-label="Picross board, {W} by {H}{game.solved ? ', solved' : ''}"
+        aria-rowcount={H}
+        aria-colcount={W}
+        aria-activedescendant="cell-{cursor}"
+        tabindex="0"
+        onkeydown={onKeyDown}
+        onfocus={() => (focused = true)}
+        onblur={() => (focused = false)}
+        oncontextmenu={(e) => e.preventDefault()}
+      >
+        {#each { length: H } as _, r (r)}
+          <div class="row" role="row">
+            {#each { length: W } as _, c (c)}
+              {@const i = r * W + c}
+              {@const v = game.board[i]!}
+              {@const filled = v !== UNKNOWN && v !== MARK_X}
+              <div
+                id="cell-{i}"
+                role="gridcell"
+                class="cell"
+                class:x={v === MARK_X && !game.solved}
+                class:hl={!filled && (r === hlRow || c === hlCol)}
+                class:t5r={(c + 1) % 5 === 0 && c < W - 1}
+                class:t5b={(r + 1) % 5 === 0 && r < H - 1}
+                class:wrong={wrong.has(i)}
+                class:cursor={focused && i === cursor && hover === null}
+                style:background={filled ? palette[v - 1] : undefined}
+                aria-label={cellLabel(i)}
+                data-v={v}
+              ></div>
+            {/each}
+          </div>
+        {/each}
+      </div>
     </div>
   </div>
 </div>
+
+{#if counter}
+  <div class="counter" aria-hidden="true" style:left="{counter.x}px" style:top="{counter.y}px">{counter.n}</div>
+{/if}
 
 <style>
   .wrap {
@@ -304,21 +465,57 @@
     overflow: auto;
     display: flex;
     justify-content: safe center;
-    padding: 4px;
+    align-items: safe flex-start;
+    /* No padding here: sticky clues stop at the content edge, so cells would
+       show through a padding strip. The board carries the spacing instead. */
+    padding: 0;
+    /* Touch drawing, panning and pinching are handled in script (SPEC §6.7). */
+    touch-action: none;
   }
 
   .board {
-    display: grid;
     width: max-content;
+    padding: 4px;
     user-select: none;
     -webkit-user-select: none;
     font-size: var(--font);
     font-variant-numeric: tabular-nums;
   }
 
+  /* Clues stay visible while a zoomed board scrolls under them (SPEC §6.7).
+     Sticky elements can't leave their containing block, so the clue bars are
+     whole rows of the board rather than grid items. */
+  .top,
+  .body {
+    display: flex;
+  }
+
+  .top {
+    position: sticky;
+    top: 0;
+    z-index: 4;
+  }
+
+  .corner,
+  .row-clues {
+    position: sticky;
+    left: 0;
+    flex-shrink: 0;
+  }
+
+  .corner {
+    z-index: 1;
+    background: var(--bg);
+  }
+
+  .row-clues {
+    z-index: 3;
+  }
+
   .col-clues,
   .row-clues {
     display: grid;
+    background: var(--bg);
   }
 
   .col-clue {
@@ -341,6 +538,12 @@
   .col-clue.hl,
   .row-clue.hl {
     background: var(--hl);
+  }
+
+  .col-clue.err,
+  .row-clue.err {
+    background: color-mix(in srgb, var(--danger) 16%, transparent);
+    box-shadow: inset 0 0 0 2px var(--danger);
   }
 
   .num {
@@ -438,6 +641,21 @@
     to {
       outline-color: transparent;
     }
+  }
+
+  .counter {
+    position: fixed;
+    transform: translate(-50%, calc(-100% - 28px));
+    pointer-events: none;
+    z-index: 30;
+    min-width: 2rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    background: var(--fg);
+    color: var(--bg);
+    font-weight: 700;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
   }
 
   .board.solved .grid {

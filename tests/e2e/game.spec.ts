@@ -198,7 +198,7 @@ test('screen-reader labels use color names; grid contains only rows of cells', a
   await expect(page.getByRole('radio', { name: 'blue' })).toBeVisible();
   await expect(page.getByRole('listitem').filter({ hasText: /\d/ }).first()).toHaveAttribute(
     'aria-label',
-    /^Column 1 clue: (0|\d+ (black|red|blue)(, \d+ (black|red|blue))*)$/,
+    /^Column 1 clue: (0|\d+ (black|red|blue)(, \d+ (black|red|blue))*)(, impossible)?$/,
   );
   const stray = await page
     .locator('[role=grid]')

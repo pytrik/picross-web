@@ -6,6 +6,8 @@
   import { onMount } from 'svelte';
   import Board from './components/Board.svelte';
   import NewPuzzleDialog from './components/NewPuzzleDialog.svelte';
+  import OptionsDialog from './components/OptionsDialog.svelte';
+  import RecentDialog from './components/RecentDialog.svelte';
   import { parseHash } from './lib/puzzle/codec.ts';
   import { MARK_X } from './lib/puzzle/types.ts';
   import { fromDefinition, resolvePuzzle, type LoadedPuzzle } from './lib/source/index.ts';
@@ -13,6 +15,7 @@
   import { effectivePalette, loadSettings, saveSettings, type Settings, type Theme } from './lib/state/settings.ts';
   import { defaultStorage } from './lib/state/storage.ts';
   import { formatTime, paletteNames } from './lib/ui/format.ts';
+  import { ZOOM_STEP } from './lib/ui/zoom.ts';
   import { generateInWorker } from './lib/workers/generate.ts';
   import type { GenerateOptions } from './lib/puzzle/generator.ts';
 
@@ -25,6 +28,15 @@
   let xMode = $state(false);
   let wrong = $state.raw(new Set<number>());
   let wrongTimer: ReturnType<typeof setTimeout> | undefined;
+
+  // Zoom (SPEC §6.7): reset for every puzzle, not persisted.
+  let board = $state<ReturnType<typeof Board>>();
+  let zoom = $state(1);
+  let zoomLimit = $state(1);
+
+  $effect(() => {
+    if (game) game.autoX = settings.autoX;
+  });
 
   // --- theme -----------------------------------------------------------------
 
@@ -60,7 +72,9 @@
     game?.pause();
     game?.flush();
     const next = new Game(puzzle, storage, () => winDialog.showModal());
+    next.autoX = settings.autoX;
     game = next;
+    zoom = 1;
     activeColor = 1;
     xMode = false;
     wrong = new Set();
@@ -151,6 +165,15 @@
     wrong = new Set();
   }
 
+  let optionsDialog: ReturnType<typeof OptionsDialog>;
+  let recentDialog: ReturnType<typeof RecentDialog>;
+
+  function openRecent() {
+    // Save the current board first so its entry is up to date.
+    game?.flush();
+    recentDialog.open();
+  }
+
   let shareDialog: HTMLDialogElement;
   async function share() {
     try {
@@ -176,6 +199,9 @@
     } else if (!mod && !e.altKey && /^[1-6]$/.test(e.key) && Number(e.key) <= game.colors) {
       activeColor = Number(e.key);
       xMode = false;
+    } else if (!mod && !e.altKey && (e.key === '+' || e.key === '=' || e.key === '-')) {
+      e.preventDefault();
+      board?.zoomBy(e.key === '-' ? 1 / ZOOM_STEP : ZOOM_STEP);
     }
   }
 
@@ -235,7 +261,9 @@
   <h1>Picross <span class="version">v{__APP_VERSION__}</span></h1>
   <nav>
     <button onclick={() => newDialog.open()}>New puzzle…</button>
+    <button class="secondary" onclick={openRecent}>Recent…</button>
     <button class="secondary" onclick={share} disabled={!game}>Share</button>
+    <button class="secondary" onclick={() => optionsDialog.open()}>Options…</button>
     <button
       class="secondary"
       title="Theme"
@@ -280,6 +308,23 @@
       <button class="secondary" onclick={restart} title="Clear the board">Restart</button>
     </div>
 
+    <div class="group zoom" role="group" aria-label="Zoom">
+      <button
+        class="secondary"
+        aria-label="Zoom out"
+        title="Zoom out (-)"
+        disabled={zoom <= 1}
+        onclick={() => board?.zoomBy(1 / ZOOM_STEP)}>−</button
+      >
+      <button
+        class="secondary"
+        aria-label="Zoom in"
+        title="Zoom in (+)"
+        disabled={zoom >= zoomLimit - 0.001}
+        onclick={() => board?.zoomBy(ZOOM_STEP)}>+</button
+      >
+    </div>
+
     <div class="group status">
       <span class="timer" aria-label="Elapsed time">{formatTime(game.elapsedMs)}</span>
       {#if game.solved}<span class="badge">Solved</span>{/if}
@@ -287,7 +332,17 @@
   </div>
 
   {#key game}
-    <Board {game} {activeColor} {xMode} {wrong} {bg} />
+    <Board
+      bind:this={board}
+      bind:zoom
+      bind:zoomLimit
+      {game}
+      {activeColor}
+      {xMode}
+      {wrong}
+      {bg}
+      showErrors={settings.showErrors}
+    />
   {/key}
 {:else if !generating}
   <div class="empty">
@@ -319,6 +374,13 @@
 {#if toast}<div class="toast" role="status">{toast}</div>{/if}
 
 <NewPuzzleDialog bind:this={newDialog} {settings} onGenerate={generate} />
+<OptionsDialog bind:this={optionsDialog} bind:showErrors={settings.showErrors} bind:autoX={settings.autoX} />
+<RecentDialog
+  bind:this={recentDialog}
+  {storage}
+  currentKey={game?.key ?? null}
+  onOpen={(hash) => (location.hash = hash)}
+/>
 
 <dialog bind:this={winDialog} aria-labelledby="win-title">
   {#if game}
@@ -437,6 +499,11 @@
 
   .x-tool::after {
     transform: translate(-50%, -50%) rotate(-45deg);
+  }
+
+  .zoom button {
+    min-width: 2.25rem;
+    font-weight: 700;
   }
 
   .timer {

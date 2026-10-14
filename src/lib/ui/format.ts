@@ -73,3 +73,15 @@ export function paletteNames(palette: string[]): string[] {
   const names = palette.map(colorName);
   return names.map((name, i) => (names.filter((n) => n === name).length > 1 ? `${name} ${names.slice(0, i + 1).filter((n) => n === name).length}` : name));
 }
+
+/** "just now", "5 min ago", "3 h ago", "yesterday", else a short date. */
+export function formatWhen(ts: number, now = Date.now()): string {
+  const min = Math.floor((now - ts) / 60_000);
+  if (min < 1) return 'just now';
+  if (min < 60) return `${min} min ago`;
+  if (min < 24 * 60) return `${Math.floor(min / 60)} h ago`;
+  if (min < 48 * 60) return 'yesterday';
+  const date = new Date(ts);
+  const sameYear = date.getFullYear() === new Date(now).getFullYear();
+  return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: sameYear ? undefined : 'numeric' });
+}

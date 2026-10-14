@@ -1,5 +1,5 @@
-import { bitsFor, fromBase64Url, packValues, toBase64Url, unpackValues } from '../puzzle/codec.ts';
-import { MARK_X } from '../puzzle/types.ts';
+import { bitsFor, decodePuzzle, fromBase64Url, packValues, parseHash, toBase64Url, unpackValues } from '../puzzle/codec.ts';
+import { MARK_X, type PuzzleDef } from '../puzzle/types.ts';
 import { readJson, type KV } from './storage.ts';
 
 /** Player progress for one puzzle (SPEC §7.1). */
@@ -8,10 +8,14 @@ export interface Progress {
   elapsedMs: number;
   checks: number;
   solved: boolean;
+  /** Canonical hash body, so Recent puzzles can reopen it (SPEC §6.8). */
+  hash?: string;
 }
 
 interface StoredProgress {
   v: 1;
+  /** Missing in records written before Recent puzzles existed. */
+  hash?: string;
   board: string;
   elapsedMs: number;
   checks: number;
@@ -38,7 +42,9 @@ export function loadProgress(storage: KV | null, key: string, colors: number, ce
   try {
     const board = decodeBoard(rec.board, colors, cellCount);
     if (board.some((v) => v > colors && v !== MARK_X)) return null;
-    return { board, elapsedMs: rec.elapsedMs || 0, checks: rec.checks || 0, solved: !!rec.solved };
+    const progress: Progress = { board, elapsedMs: rec.elapsedMs || 0, checks: rec.checks || 0, solved: !!rec.solved };
+    if (typeof rec.hash === 'string') progress.hash = rec.hash;
+    return progress;
   } catch {
     return null;
   }
@@ -68,6 +74,7 @@ export function saveProgress(storage: KV | null, key: string, colors: number, pr
   }
   const rec: StoredProgress = {
     v: 1,
+    hash: progress.hash,
     board: encodeBoard(progress.board, colors),
     elapsedMs: Math.round(progress.elapsedMs),
     checks: progress.checks,
@@ -104,4 +111,39 @@ export function clearProgress(storage: KV | null, key: string): void {
   } catch {
     // ignore
   }
+}
+
+/** One stored puzzle as listed by Recent puzzles (SPEC §6.8). */
+export interface RecentEntry {
+  key: string;
+  hash: string;
+  def: PuzzleDef;
+  board: Uint8Array;
+  elapsedMs: number;
+  solved: boolean;
+  updatedAt: number;
+}
+
+/**
+ * Stored puzzles, newest first. Records without a hash (written before it
+ * was stored) or that no longer decode are skipped.
+ */
+export function listRecent(storage: KV | null): RecentEntry[] {
+  if (!storage) return [];
+  const entries: RecentEntry[] = [];
+  for (const { k, t } of readIndex(storage).sort((a, b) => b.t - a.t)) {
+    const rec = readJson<StoredProgress>(storage, recordKey(k));
+    if (!rec || typeof rec.hash !== 'string') continue;
+    const target = parseHash(rec.hash);
+    if (target.kind !== 'puzzle') continue;
+    try {
+      const def = decodePuzzle(target.value);
+      const progress = loadProgress(storage, k, def.palette.length, def.cells.length);
+      if (!progress) continue;
+      entries.push({ key: k, hash: rec.hash, def, board: progress.board, elapsedMs: progress.elapsedMs, solved: progress.solved, updatedAt: rec.updatedAt || t });
+    } catch {
+      // Undecodable record: leave it out; it ages out of the LRU.
+    }
+  }
+  return entries;
 }

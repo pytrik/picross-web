@@ -64,6 +64,10 @@ file holds the non-obvious things learned while building it.
   inlined bundle otherwise). Don't "fix" it.
 - `dist/` must contain only `index.html` (intermediates go to `.build/`):
   wrangler uploads the whole folder and the release zip copies it.
+- `esbuildTsTransformOptions: {}` on the Svelte plugin is deliberate: without
+  it the build's `minifyIdentifiers` applies to `*.svelte.ts` before the Svelte
+  compiler sees them, and an import renamed to `$` fails the build
+  ("The $ name is reserved"), seemingly at random as the code grows.
 - The generator worker is inlined as a string by `scripts/inline-worker.mjs`
   (`import src from './x.worker.ts?worker'`).
 

@@ -29,6 +29,10 @@ await esbuild.build({
     inlineWorker({ minify: !debug }),
     sveltePlugin({
       preprocess: sveltePreprocess(),
+      // Strip types from *.svelte.ts with plain options. By default the plugin
+      // reuses this build's options, and minifyIdentifiers can then rename an
+      // import to `$`, which the Svelte compiler rejects (reserved name).
+      esbuildTsTransformOptions: {},
       compilerOptions: { css: 'injected' },
     }),
   ],

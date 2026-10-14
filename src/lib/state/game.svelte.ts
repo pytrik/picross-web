@@ -1,4 +1,5 @@
-import { boardSatisfies, colIndices, completedRuns, computeClues, rowIndices } from '../puzzle/clues.ts';
+import { boardSatisfies, colIndices, completedRuns, computeClues, lineClue, rowIndices, sameClue } from '../puzzle/clues.ts';
+import { lineFeasible } from '../puzzle/solver.ts';
 import { MARK_X, UNKNOWN, type Clues, type PuzzleDef } from '../puzzle/types.ts';
 import type { LoadedPuzzle } from '../source/index.ts';
 import { History, type Change } from './history.ts';
@@ -29,6 +30,8 @@ export class Game {
   solved = $state(false);
   canUndo = $state(false);
   canRedo = $state(false);
+  /** Auto-X finished lines after each stroke (SPEC §6.5). */
+  autoX = false;
 
   /** Persisted elapsed time, excluding the currently running stretch. */
   #elapsedBase = $state(0);
@@ -48,6 +51,16 @@ export class Game {
   );
   colHints = $derived.by(() =>
     this.clues.cols.map((clue, c) => completedRuns(clue, this.#line(colIndices(this.def.width, this.def.height, c)))),
+  );
+
+  /** Lines whose marks can no longer fit their clue (SPEC §6.5). */
+  rowErrors = $derived.by(() =>
+    this.clues.rows.map((clue, r) => !lineFeasible(clue, this.#line(rowIndices(this.def.width, r)), this.colors)),
+  );
+  colErrors = $derived.by(() =>
+    this.clues.cols.map(
+      (clue, c) => !lineFeasible(clue, this.#line(colIndices(this.def.width, this.def.height, c)), this.colors),
+    ),
   );
 
   constructor(puzzle: LoadedPuzzle, storage: KV | null, onSolved: () => void) {
@@ -115,7 +128,19 @@ export class Game {
     }
   }
 
+  /** Reverts the current stroke without an undo step (SPEC §6.3). */
+  cancelStroke(): void {
+    const stroke = this.#stroke;
+    this.#stroke = null;
+    if (!stroke || stroke.size === 0) return;
+    const next = this.board.slice();
+    for (const [index, before] of stroke) next[index] = before;
+    this.board = next;
+    this.#scheduleSave();
+  }
+
   endStroke(): void {
+    if (this.autoX && this.#stroke) this.#autoX(this.#stroke);
     const stroke = this.#stroke;
     this.#stroke = null;
     if (!stroke) return;
@@ -128,6 +153,30 @@ export class Game {
     }
     this.#history.push(change);
     this.#afterChange();
+  }
+
+  /**
+   * Marks X on the unknown cells of every line the stroke changed whose fills
+   * now match its clue. Runs inside the stroke, so it shares its undo step.
+   */
+  #autoX(stroke: Map<number, number>): void {
+    const { width, height } = this.def;
+    const rows = new Set<number>();
+    const cols = new Set<number>();
+    for (const [index, before] of stroke) {
+      if (this.board[index] === before) continue;
+      rows.add(Math.floor(index / width));
+      cols.add(index % width);
+    }
+    const lines = [
+      ...[...rows].map((r) => [this.clues.rows[r]!, rowIndices(width, r)] as const),
+      ...[...cols].map((c) => [this.clues.cols[c]!, colIndices(width, height, c)] as const),
+    ];
+    for (const [clue, indices] of lines) {
+      const fills = indices.map((i) => (this.board[i] === MARK_X ? 0 : this.board[i]!));
+      if (!sameClue(lineClue(fills), clue)) continue;
+      for (const i of indices) if (this.board[i] === UNKNOWN) this.setCell(i, MARK_X);
+    }
   }
 
   undo(): void {
@@ -205,6 +254,7 @@ export class Game {
       elapsedMs: this.elapsedMs,
       checks: this.checks,
       solved: this.solved,
+      hash: this.hash,
     });
   }
 }

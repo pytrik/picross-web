@@ -174,3 +174,49 @@ test('progress saved elsewhere is loaded on construction', () => {
   assert.equal(game.elapsedMs, 777);
   assert.equal(game.checks, 3);
 });
+
+test('line errors flag only lines whose marks cannot fit (SPEC §6.5)', () => {
+  const { game } = newGame();
+  assert.ok(!game.rowErrors.some(Boolean) && !game.colErrors.some(Boolean));
+  stroke(game, [[2, 1]]);
+  assert.ok(!game.rowErrors[0], 'row 0 can still hold a 2-run over cell 2');
+  assert.ok(game.colErrors[2], 'column 2 only has a color-2 run');
+  stroke(game, [[0, 1], [1, 1]]);
+  assert.ok(game.rowErrors[0], 'three filled cells for a 2-run');
+  assert.deepEqual(game.rowErrors.slice(1), [false, false, false, false]);
+});
+
+test('auto-X marks finished lines inside the same undo step (SPEC §6.5)', () => {
+  const { game } = newGame();
+  stroke(game, [[0, 1], [1, 1]]);
+  assert.ok(!game.board.includes(MARK_X), 'off by default');
+  game.undo();
+
+  game.autoX = true;
+  stroke(game, [[0, 1], [1, 1]]);
+  const xs = [...game.board.keys()].filter((i) => game.board[i] === MARK_X);
+  // Row 0 (clue 2) and column 1 (clue 1) are finished; column 0 (1, 1) isn't.
+  assert.deepEqual(xs, [2, 3, 4, 6, 11, 16, 21]);
+  game.undo();
+  assert.ok(game.board.every((v) => v === 0), 'one undo reverts fills and X marks');
+  game.redo();
+  assert.equal(game.board.filter((v) => v === MARK_X).length, 7);
+});
+
+test('cancelStroke reverts without an undo step', () => {
+  const { game } = newGame();
+  game.beginStroke();
+  game.setCell(0, 1);
+  game.setCell(1, 1);
+  game.cancelStroke();
+  game.endStroke();
+  assert.ok(game.board.every((v) => v === 0));
+  assert.ok(!game.canUndo);
+});
+
+test('saved progress records the puzzle hash', () => {
+  const { game, storage } = newGame();
+  stroke(game, [[0, 1]]);
+  game.flush();
+  assert.equal(loadProgress(storage, game.key, 2, 25)?.hash, game.hash);
+});

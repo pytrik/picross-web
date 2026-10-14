@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { encodePuzzle } from '../puzzle/codec.ts';
 import { MARK_X } from '../puzzle/types.ts';
 import { History } from './history.ts';
-import { MAX_ENTRIES, clearProgress, loadProgress, saveProgress } from './progress.ts';
+import { MAX_ENTRIES, clearProgress, listRecent, loadProgress, saveProgress } from './progress.ts';
 import type { KV } from './storage.ts';
 
 function memoryStorage(limit = Infinity): KV & { map: Map<string, string> } {
@@ -58,6 +59,30 @@ test('quota errors evict old entries and retry', () => {
   saveProgress(s, 'new', 1, progress([1]), 5000);
   assert.ok(loadProgress(s, 'new', 1, 1));
   assert.equal(loadProgress(s, 'k0', 1, 1), null);
+});
+
+test('listRecent: newest first, with decoded puzzle and board; legacy records skipped', () => {
+  const s = memoryStorage();
+  const def = (fill: number) => ({ width: 5, height: 5, palette: ['#222222'], cells: new Uint8Array(25).fill(fill ? 1 : 0).map((v, i) => (i === 0 ? 1 : v)) });
+  const a = encodePuzzle(def(0));
+  const b = encodePuzzle(def(1));
+  const board = new Uint8Array(25);
+  board[0] = 1;
+  board[1] = MARK_X;
+  saveProgress(s, 'a', 1, { board, elapsedMs: 10, checks: 0, solved: false, hash: a }, 1000);
+  saveProgress(s, 'b', 1, { board, elapsedMs: 20, checks: 0, solved: true, hash: b }, 3000);
+  saveProgress(s, 'legacy', 1, progress([1]), 2000);
+  s.map.set('picross:p:bad', JSON.stringify({ v: 1, hash: 'p=1.garbage', board: '', updatedAt: 1 }));
+
+  const list = listRecent(s);
+  assert.deepEqual(list.map((e) => e.key), ['b', 'a']);
+  assert.equal(list[0]!.hash, b);
+  assert.equal(list[0]!.solved, true);
+  assert.equal(list[0]!.updatedAt, 3000);
+  assert.equal(list[1]!.def.width, 5);
+  assert.deepEqual([...list[1]!.board.slice(0, 3)], [1, MARK_X, 0]);
+  assert.equal(loadProgress(s, 'a', 1, 25)?.hash, a);
+  assert.deepEqual(listRecent(null), []);
 });
 
 test('history undo/redo', () => {

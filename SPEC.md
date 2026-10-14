@@ -25,6 +25,21 @@ Keywords **MUST**, **SHOULD**, **MAY** are used in the RFC 2119 sense.
 - Accounts, leaderboards, cloud sync.
 - Hand-authored puzzle editor.
 
+### 1.3 Planned (not yet specified)
+
+Agreed for a later version; each gets a proper spec section before work starts.
+
+- **Hint**: reveal one cell that line logic forces next (reusing §5.3), with
+  its line highlighted; hints used are shown on win.
+- **Difficulty rating**: grade puzzles by solver effort (Easy/Medium/Hard),
+  shown in the toolbar; optional target difficulty in the generator, within
+  the 10 s budget.
+- **Picture-like grids**: optional symmetry / smoothing in the seed step so
+  puzzles look less like noise.
+- **Puzzle editor**: draw a grid, check it is line-solvable (§5.3), share as a
+  `p=` link.
+- **Database puzzles**: `#id=` links backed by a Worker + D1 (§11).
+
 ---
 
 ## 2. Terminology
@@ -255,8 +270,14 @@ The user MAY override individual swatches. Duplicate colors MUST be prevented
 - After the pointer leaves the first cell, the drag is **locked to the
   dominant axis** (row or column).
 - One drag = one undo step.
+- **Run counter**: while a drag spans 2 or more cells, a small badge above the
+  pointer shows the span length (cells from the first cell to the current
+  one along the locked axis), so long runs can be measured without counting.
+  It is visual only (`aria-hidden`) and disappears when the drag ends.
 - Uses Pointer Events with `setPointerCapture`; `touch-action: none` on the
-  board.
+  board container (touch panning and zooming are handled by the app, §6.7).
+- A second touch while a drag is in progress **cancels the drag** (its cells
+  revert, no undo step) and starts a pinch/pan gesture instead.
 
 ### 6.4 Keyboard
 
@@ -268,7 +289,11 @@ The user MAY override individual swatches. Duplicate colors MUST be prevented
 | Backspace / Delete | Clear cell to unknown |
 | Shift + Arrows | Move and apply the last action (keyboard drag) |
 | `1`–`6` | Select color |
+| `+` / `=`, `-` | Zoom in / out (§6.7) |
 | Ctrl/Cmd+Z, Ctrl+Y / Ctrl/Cmd+Shift+Z | Undo / redo |
+
+Moving the cursor scrolls it into view when the board is zoomed, clear of the
+sticky clues.
 
 ### 6.5 Assists
 
@@ -282,6 +307,17 @@ The user MAY override individual swatches. Duplicate colors MUST be prevented
     scanning from each end, a run of filled cells bounded by the edge/X (or
     by a different color) on both sides that matches the next expected clue run
     dims that clue run. Scanning stops at the first unknown cell.
+- **Line errors** (option, default **on**): a line whose marks admit no
+  placement of its clue is flagged: its clue gets a red tint. Computed from
+  the board alone with the line solver (§5.3): unknown cells allow every
+  state, X allows only empty, a filled cell only its color. This catches too
+  many filled cells, runs too long, wrong order, and X marks that block a run,
+  but never reveals anything the clue doesn't already imply.
+- **Auto-X** (option, default **off**): after a stroke, every line the stroke
+  changed whose filled cells now exactly match its clue gets its remaining
+  unknown cells marked X. The X marks join the player's stroke (one undo step
+  undoes both). Undo/redo never trigger auto-X. No cascade is needed: adding X
+  marks cannot complete another line.
 - **Mistake check** (button): highlights for 2 s every board cell that
   contradicts the solution (filled with the wrong color, filled where empty, or
   X where filled). If there are none, show "No mistakes so far". Each press
@@ -301,6 +337,37 @@ The user MAY override individual swatches. Duplicate colors MUST be prevented
 Hovering/focusing a cell highlights its row and column and their clues
 (not on a solved board).
 
+### 6.7 Zoom & pan
+
+- Zoom factor `1` = the fitted cell size (§8); range `1` to whatever makes a
+  cell 64 px (at least `1`). Not persisted; every newly loaded puzzle starts
+  at `1`.
+- **Touch**: one finger on the grid draws (§6.3); one finger on the clues
+  pans; two fingers anywhere on the board pinch-zoom (anchored at the
+  midpoint between the fingers) and pan together. After a gesture, nothing
+  is drawn until all fingers have lifted.
+- **Buttons**: toolbar **−** / **+** zoom by ×1.25 around the centre of the
+  visible board; disabled at the limits. Keyboard `-` / `+` do the same.
+- The board container's height is limited to the viewport below the toolbar
+  and it scrolls in both directions. Column clues stick to its top edge and
+  row clues to its left edge, so the clues of the visible cells stay readable
+  while panning.
+
+### 6.8 Recent puzzles
+
+**Recent…** in the header opens a dialog listing the stored puzzles (§7.3),
+newest first. Each entry shows a thumbnail of the player's own board (never
+the solution; X and unknown both render as blank paper), the size, color
+count, status (Solved / In progress), elapsed time, and when it was last
+played. Activating an entry navigates to its hash (a normal history entry, so
+Back returns). The current puzzle is marked "Current". Each entry except the
+current one has a **Delete** button that removes its stored progress.
+
+Only puzzles with a stored record appear: unsolved puzzles without any marks
+are not stored (§7.3). Records written before the `hash` field existed
+(§7.1) cannot be opened and are left out of the list (they still age out of
+the LRU normally).
+
 ---
 
 ## 7. Persistence (localStorage)
@@ -314,6 +381,7 @@ is unavailable the app still works, without persistence.
 picross:p:<puzzleKey>  →  JSON
 {
   "v": 1,
+  "hash": "p=1.10x10...",   // canonical hash body, for Recent puzzles (§6.8)
   "board": "<base64url>",   // bit-packed like §4.2, value N+1 = X
   "elapsedMs": 123456,
   "checks": 2,
@@ -322,6 +390,7 @@ picross:p:<puzzleKey>  →  JSON
 }
 ```
 
+`hash` was added after v1 shipped; readers MUST accept records without it.
 `board` packing uses `bits = ceil(log2(N + 2))`. Writes are debounced (~300 ms)
 and flushed on `pagehide`/`visibilitychange:hidden`.
 
@@ -337,6 +406,9 @@ picross:index     →  JSON [{ "k": "<puzzleKey>", "t": updatedAt }, ...]
 picross:settings  →  JSON last-used generator options (§5.1) + UI prefs
 ```
 
+UI prefs: `theme` (§8), `showErrors` (default `true`) and `autoX` (default
+`false`) (§6.5). Missing or non-boolean values fall back to the defaults.
+
 On every progress write, update the entry's `t`. Keep at most **50** entries;
 evict the oldest (removing its `picross:p:` record). On `QuotaExceededError`,
 evict the oldest 10 and retry once.
@@ -347,16 +419,21 @@ Unsolved boards with zero progress are not stored.
 
 ## 8. UI layout
 
-- **Header**: app name, version, **New puzzle…** (opens the dialog), **Share**,
-  theme toggle (Auto / Light / Dark).
+- **Header**: app name, version, **New puzzle…** (opens the dialog),
+  **Recent…** (§6.8), **Share**, **Options…**, theme toggle
+  (Auto / Light / Dark).
 - **New puzzle panel** (dialog): size presets + custom W/H, color count,
   palette preset, swatch overrides, density, **Generate**.
-- **Toolbar**: color swatches + X tool, undo, redo, check, restart, timer,
-  "Solved" badge.
+- **Options** (dialog): checkboxes "Flag impossible lines" (`showErrors`) and
+  "Auto-X finished lines" (`autoX`) (§6.5). Changes apply immediately and
+  persist.
+- **Toolbar**: color swatches + X tool, undo, redo, check, restart, zoom
+  −/+ (§6.7), timer, "Solved" badge.
 - **Board**: column clues on top (stacked bottom-aligned), row clues on the
   left (right-aligned), grid with a thicker rule every 5 cells.
-- Cell size is computed to fit the viewport (min 14 px, max 40 px). If it
-  can't fit at the minimum, the board container scrolls (the page does not).
+- Cell size is computed to fit the viewport (min 14 px, max 40 px), then
+  multiplied by the zoom factor (§6.7). If the board doesn't fit, the board
+  container scrolls (the page does not), with sticky clues.
 - Light/dark theme follows `prefers-color-scheme`, overridable and persisted.
   A tiny inline script in `<head>` applies it before first paint (no light
   flash for dark users); the app keeps it in sync afterwards.
@@ -378,7 +455,8 @@ Unsolved boards with zero progress are not stored.
   "Row clues") of `listitem`s.
 - Each cell has an `aria-label`, e.g. "Row 3, column 7, filled red" (single
   color: "filled"; on a solved board unknown/X read as "empty").
-- Clues get `aria-label`s like "Row 3 clue: 2 red, 1 blue".
+- Clues get `aria-label`s like "Row 3 clue: 2 red, 1 blue". A flagged line
+  (§6.5) appends ", impossible" so the error isn't conveyed by color alone.
 - Color names are derived from the hex value (hue/saturation/lightness
   buckets: black, gray, red, orange, amber, yellow, green, teal, blue, purple,
   pink, brown, tan, with dark/light prefixes). Colors that get the same name
@@ -405,15 +483,17 @@ src/
   main.ts, template.html, global.d.ts
   App.svelte            header, toolbar, dialogs (win, share, confirm), hash lifecycle
   components/
-    Board.svelte        clues + grid, sizing, pointer/keyboard input
+    Board.svelte        clues + grid, sizing, zoom/pan, pointer/keyboard input
     NewPuzzleDialog.svelte
+    OptionsDialog.svelte  assist options (§6.5)
+    RecentDialog.svelte   recent puzzles list + thumbnails (§6.8)
   lib/
     puzzle/             pure logic, no DOM/Svelte
       types.ts          PuzzleDef, Clue, constants
       clues.ts          solution → clues; board → completion hints, win check
       codec.ts          bit packing, base64url, hash encode/decode, validation
       key.ts            FNV-1a puzzle key
-      solver.ts         line solver (§5.3)
+      solver.ts         line solver (§5.3), line feasibility (§6.5)
       generator.ts      seed + repair loop (§5.2)
       palettes.ts       presets (§5.4)
     workers/
@@ -421,14 +501,15 @@ src/
       generate.ts       spawns the inlined worker; main-thread fallback
     state/
       game.svelte.ts    Game: board, timer, undo, saves (Svelte runes)
-      progress.ts       localStorage records + LRU (§7)
+      progress.ts       localStorage records + LRU (§7), recent list (§6.8)
       settings.ts       last-used options + theme
       history.ts        undo/redo stack
       storage.ts        safe localStorage access
     source/
       index.ts          resolvePuzzle(hash) → LoadedPuzzle (§11)
     ui/
-      format.ts         time format, contrast, color names
+      format.ts         time/date format, contrast, color names
+      zoom.ts           zoom limits and scroll anchoring (§6.7)
   styles/global.css
 scripts/                build.mjs, dev.mjs, inline-worker.mjs, serve.mjs
 tests/                  e2e/ (Playwright), Node hooks for *.svelte.ts
@@ -498,11 +579,13 @@ modules (`*.svelte.ts`) are compiled on the fly by a Node loader hook
 - solver: known unique puzzles solve; known ambiguous ones don't fully solve.
 - generator: N random runs per color count produce valid, line-solvable,
   validated definitions.
-- completion-hint logic.
-- LRU eviction.
-- settings loading/clamping and palette overrides; color naming.
-- `Game`: strokes + undo/redo, hints, timer (start, pause/resume, resume on
-  load), solve, check, restart, loading saved progress.
+- completion-hint logic; line feasibility.
+- LRU eviction; recent list (hash stored, legacy records skipped).
+- settings loading/clamping and palette overrides; color naming; date
+  formatting; zoom limits and anchoring.
+- `Game`: strokes + undo/redo, hints, line errors, auto-X (incl. undo),
+  stroke cancel, timer (start, pause/resume, resume on load), solve, check,
+  restart, loading saved progress.
 
 End-to-end: Playwright Test (`tests/e2e/`, `npm run e2e`) against the
 production `dist/index.html`, served by `scripts/serve.mjs`, using the system
@@ -511,8 +594,9 @@ project for tests tagged `@mobile`. Any console error fails a test. Covers
 input (click, right-click, drag + axis lock, keyboard), undo/redo, reload
 persistence, mistake check, solving + win dialog actions, multi-color, Back
 navigation, restart, invalid links, palette validation, `file://` offline use,
-screen-reader labels and grid structure, pre-paint theme, and mobile
-layout/touch. Cells expose `data-v` (board value) for tests.
+screen-reader labels and grid structure, pre-paint theme, options (line
+errors, auto-X), run counter, recent puzzles, zoom buttons + sticky clues,
+and mobile layout/touch incl. pinch-zoom. Cells expose `data-v` (board value) for tests.
 
 ### 10.8 Versioning
 

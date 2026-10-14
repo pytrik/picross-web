@@ -13,7 +13,7 @@ import {
 import { boardSatisfies, completedRuns, computeClues, lineClue } from './clues.ts';
 import { generatePuzzle, mulberry32 } from './generator.ts';
 import { fnv1a64 } from './key.ts';
-import { solveGrid, solveLine, masksToCells } from './solver.ts';
+import { lineFeasible, solveGrid, solveLine, masksToCells } from './solver.ts';
 import { MARK_X, PuzzleError, type PuzzleDef } from './types.ts';
 
 const PALETTE = ['#222222', '#d94040', '#3070d0', '#e0a020', '#40a050', '#9050c0'];
@@ -148,6 +148,19 @@ test('solveLine forces gap only between same colors', () => {
   assert.deepEqual(solveLine([{ len: 2, color: 1 }, { len: 2, color: 2 }], Array(4).fill(full)), [2, 2, 4, 4]);
   // Two same-color runs of 2 need 5 cells.
   assert.equal(solveLine([{ len: 2, color: 1 }, { len: 2, color: 1 }], Array(4).fill(full)), null);
+});
+
+test('lineFeasible flags only lines whose marks cannot fit the clue', () => {
+  const X = MARK_X;
+  const clue = [{ len: 2, color: 1 }, { len: 1, color: 2 }];
+  assert.ok(lineFeasible(clue, [0, 0, 0, 0, 0], 2), 'empty board fits');
+  assert.ok(lineFeasible(clue, [1, 1, 2, X, 0], 2), 'complete line fits');
+  assert.ok(lineFeasible([], [X, 0, X], 1), 'zero clue with no fills');
+  assert.ok(!lineFeasible([], [0, 1, 0], 1), 'fill in a zero line');
+  assert.ok(!lineFeasible(clue, [1, 1, 1, 0, 0], 2), 'run too long');
+  assert.ok(!lineFeasible(clue, [2, 0, 1, 1, 0], 2), 'wrong order');
+  assert.ok(!lineFeasible(clue, [0, X, 0, X, 0], 2), 'X blocks the 2-run');
+  assert.ok(!lineFeasible(clue, [1, 0, 1, 0, 2], 2), 'too many cells of color 1');
 });
 
 test('solveGrid solves a known unique puzzle', () => {

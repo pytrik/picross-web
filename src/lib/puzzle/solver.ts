@@ -1,5 +1,5 @@
 import { colIndices, rowIndices } from './clues.ts';
-import type { Clue, Clues } from './types.ts';
+import { MARK_X, UNKNOWN, type Clue, type Clues } from './types.ts';
 
 /**
  * Cell knowledge is a bitmask of still-possible states: bit 0 = empty,
@@ -165,3 +165,13 @@ export function masksToCells(masks: Uint8Array): Uint8Array {
 }
 
 export { isSingle };
+
+/**
+ * Whether a board line (0 unknown, 1..N color, X) still admits a placement of
+ * `clue` (SPEC §6.5, line errors). Uses only the board, never the solution.
+ */
+export function lineFeasible(clue: Clue, line: ArrayLike<number>, colors: number): boolean {
+  const all = fullMask(colors);
+  const masks = Array.from(line, (v) => (v === UNKNOWN ? all : v === MARK_X ? EMPTY_BIT : 1 << v));
+  return solveLine(clue, masks) !== null;
+}

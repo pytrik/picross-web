@@ -1,5 +1,6 @@
 import { expect, test as base, type Page } from '@playwright/test';
-import { decodePuzzle, parseHash } from '../../src/lib/puzzle/codec.ts';
+import { decodePuzzle, encodePuzzle, parseHash } from '../../src/lib/puzzle/codec.ts';
+import { PALETTES } from '../../src/lib/puzzle/palettes.ts';
 import type { PuzzleDef } from '../../src/lib/puzzle/types.ts';
 
 /** `test` that fails on any console error or uncaught exception. */
@@ -78,4 +79,22 @@ export async function generateVia(page: Page, size: string, colors: number) {
   await dialog.getByRole('button', { name: 'Generate' }).click();
   await expect(page).not.toHaveURL(before);
   await expect(page.getByRole('status').filter({ hasText: 'Generating' })).toHaveCount(0);
+}
+
+/**
+ * Opens a fixed puzzle given as rows of `.` (empty) and digits (color index),
+ * e.g. `['11...', '..2..']`. Returns its hash body.
+ */
+export async function gotoPuzzle(page: Page, rows: string[]): Promise<string> {
+  const cells = Uint8Array.from(rows.join(''), (ch) => (ch === '.' ? 0 : Number(ch)));
+  const colors = Math.max(...cells);
+  const hash = encodePuzzle({
+    width: rows[0]!.length,
+    height: rows.length,
+    palette: PALETTES[0]!.colors.slice(0, colors),
+    cells,
+  });
+  await page.goto(`/#${hash}`);
+  await waitForBoard(page, cells.length);
+  return hash;
 }

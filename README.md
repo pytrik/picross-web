@@ -16,8 +16,11 @@ no guessing.
   browser per puzzle (the last 50 are kept).
 - **Single file**: the whole app is one self-contained `index.html` with no
   external requests, so it works offline.
-- Undo/redo, clue completion hints, mistake checks, timer, keyboard play,
-  touch support, and light/dark theme.
+- **Recent puzzles**: pick up any of your last 50 puzzles from a list with
+  thumbnails of your progress.
+- Undo/redo, clue completion hints, impossible-line warnings, optional
+  auto-X for finished lines, a run counter while dragging, mistake checks,
+  timer, keyboard play, touch support with pinch-zoom, and light/dark theme.
 
 **Play it at <https://picross-web.pytrik.workers.dev>**, or download the
 offline `index.html` from the [latest release](https://github.com/pytrik/picross-web/releases/latest).
@@ -39,10 +42,16 @@ between them; runs of **different** colors may touch.
 | Repeat last action while moving | — | — | Shift + Arrow keys |
 | Pick color | Click swatch | Tap swatch | `1`–`6` |
 | Undo / redo | Toolbar | Toolbar | Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z) |
+| Zoom | Toolbar − / + | Pinch, or toolbar − / + | `-` / `+` |
+| Pan (when zoomed) | Scroll wheel / scrollbars | Two fingers, or one finger on the clues | Arrow keys follow the cursor |
 
 Drags stay on the row or column they start in, and only change cells that
 were in the same state as the first one, so a drag never wipes out other work.
-Dimmed clue numbers are runs your marks already complete.
+While dragging, a small counter shows how many cells the drag spans.
+Dimmed clue numbers are runs your marks already complete; a red clue means
+that line's marks can no longer fit it. **Options…** turns that warning off
+and can switch on auto-X, which marks the rest of a line empty as soon as its
+filled cells match the clue.
 
 ## Development
 

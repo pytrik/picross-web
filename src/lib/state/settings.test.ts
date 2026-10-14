@@ -27,6 +27,8 @@ test('out-of-range and wrong-typed values are clamped or replaced', () => {
       overrides: ['#ABCDEF', 'red', '#00ff00', 5],
       density: 0.1,
       theme: 'neon',
+      showErrors: 'yes',
+      autoX: 1,
     }),
   );
   assert.equal(s.width, 30);
@@ -36,6 +38,14 @@ test('out-of-range and wrong-typed values are clamped or replaced', () => {
   assert.deepEqual(s.overrides, [null, null, '#00ff00', null]); // uppercase hex rejected
   assert.equal(s.density, 0.4);
   assert.equal(s.theme, 'system');
+  assert.equal(s.showErrors, true);
+  assert.equal(s.autoX, false);
+});
+
+test('assist options load when set', () => {
+  const s = loadSettings(storageWith({ showErrors: false, autoX: true }));
+  assert.equal(s.showErrors, false);
+  assert.equal(s.autoX, true);
 });
 
 test('settings round-trip', () => {
