@@ -135,6 +135,7 @@
         >
         {#each DIFFICULTIES as level (level)}
           {@const allowed = difficultyAllowed(level, draft.width, draft.height)}
+          {@const reason = `Needs a board of at least ${MIN_AREA[level]} cells`}
           <button
             type="button"
             class="chip"
@@ -142,7 +143,8 @@
             aria-checked={draft.difficulty === level}
             class:active={draft.difficulty === level}
             class:unavailable={!allowed}
-            title={allowed ? undefined : `Needs a board of at least ${MIN_AREA[level]} cells`}
+            title={allowed ? undefined : reason}
+            aria-label={allowed ? undefined : `${RATING_LABELS[level]}, ${reason.toLowerCase()}`}
             onclick={() => (draft.difficulty = level)}>{RATING_LABELS[level]}</button
           >
         {/each}

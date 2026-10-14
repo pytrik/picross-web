@@ -18,18 +18,19 @@ no guessing.
   external requests, so it works offline.
 - **Recent puzzles**: pick up any of your last 50 puzzles from a list with
   thumbnails of your progress.
-- Undo/redo, clue completion hints, impossible-line warnings, optional
-  auto-X for finished lines, a run counter while dragging, mistake checks,
-  hints, Easy/Medium/Hard ratings with a difficulty choice for new puzzles,
-  symmetric or smooth picture-like styles,
-  timer, keyboard play, touch support with pinch-zoom, and light/dark theme.
+- **Difficulty and style**: every puzzle is rated Easy, Medium or Hard, and
+  you can ask for a difficulty and a Random, Symmetric or Smooth style.
+- Undo/redo, a Hint button, mistake checks, dimmed clues for finished runs,
+  impossible-line warnings, optional auto-X for finished lines, a run counter
+  while dragging, timer, keyboard play, touch support with pinch-zoom, and
+  light/dark theme.
 
 **Play it at <https://picross-web.pytrik.workers.dev>**, or download the
 offline `index.html` from the [latest release](https://github.com/pytrik/picross-web/releases/latest).
 
-Full behaviour is specified in [SPEC.md](SPEC.md). The road to 1.0.0 (a
-puzzle editor and a curated puzzle library) is in its §1.3, with the
-definition of done in §1.4.
+Full behaviour is specified in [SPEC.md](SPEC.md). The road to 1.0.0 is in
+its §1.3: still to come are a puzzle editor and a curated puzzle library
+(`#id=…` links served by a Worker + D1). The definition of done is §1.4.
 
 ## How to play
 
@@ -55,8 +56,9 @@ were in the same state as the first one, so a drag never wipes out other work.
 While dragging, a small counter shows how many cells the drag spans.
 Dimmed clue numbers are runs your marks already complete; a red clue means
 that line's marks can no longer fit it. **Options…** sets the theme
-(Auto / Light / Dark), turns that warning off, and can switch on auto-X, which marks the rest of a line empty as soon as its
-filled cells match the clue.
+(Auto / Light / Dark), turns that warning off, and can switch on auto-X,
+which marks the rest of a line empty as soon as its filled cells match the
+clue.
 
 Every puzzle is rated Easy, Medium or Hard by how long the chain of logical
 steps is. In **New puzzle…** you can ask for a difficulty (Medium needs a
@@ -119,11 +121,6 @@ workflow artifact.
 
 Repository secrets required: `CLOUDFLARE_API_TOKEN` ("Edit Cloudflare
 Workers" template) and `CLOUDFLARE_ACCOUNT_ID`.
-
-## Roadmap
-
-- Load curated puzzles from a database (`#id=…` links served by a Worker + D1).
-  The puzzle format and storage keys are already designed for it (SPEC §11).
 
 ## License
 

@@ -247,15 +247,19 @@ test('hints used survive a reload and show on win; Hint is disabled once solved'
 test('difficulty: gated by area, sets density, shown in toolbar and win dialog, persisted', async ({ page }) => {
   await gotoPuzzle(page, ['11111', '.....', '..2..', '.....', '.....']);
   await expect(page.locator('.toolbar .rating')).toHaveText('Easy');
+  await expect(page.locator('.toolbar .rating')).toHaveAttribute('aria-label', 'Difficulty: Easy');
 
   await openNewPuzzleDialog(page);
   const dialog = page.locator('dialog.new-puzzle');
   const level = (name: string) => dialog.getByRole('radio', { name, exact: true });
   const density = dialog.getByRole('slider', { name: 'Density' });
   await dialog.getByRole('button', { name: '5×5', exact: true }).click();
-  await expect(level('Hard')).toHaveAttribute('title', 'Needs a board of at least 150 cells');
-  await level('Hard').click();
-  await expect(level('Hard')).toHaveAttribute('aria-checked', 'true');
+  // Too small: the reason is part of the accessible name, not just the fading.
+  const hardTooSmall = level('Hard, needs a board of at least 150 cells');
+  await expect(hardTooSmall).toHaveAttribute('title', 'Needs a board of at least 150 cells');
+  await expect(level('Medium, needs a board of at least 75 cells')).toBeVisible();
+  await hardTooSmall.click();
+  await expect(hardTooSmall).toHaveAttribute('aria-checked', 'true');
   await expect(dialog.locator('.error')).toHaveText(/Hard needs a board of at least 150 cells; this one has 25\./);
   await expect(dialog.getByRole('button', { name: 'Generate' })).toBeDisabled();
   await expect(density).toBeDisabled();

@@ -54,6 +54,9 @@ file holds the non-obvious things learned while building it.
   `postMessage` (see `src/lib/workers/generate.ts`).
 - `history.pushState` does not fire `hashchange`; the app relies on that to
   avoid loading a freshly generated puzzle twice.
+- A line break inside template text renders as whitespace (a newline in
+  `textContent`). Keep user-facing sentences that tests match exactly on one
+  line, using `{@const}` for long expressions.
 
 ### Values duplicated across files (change together)
 

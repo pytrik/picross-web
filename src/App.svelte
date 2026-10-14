@@ -369,7 +369,7 @@
     </div>
 
     <div class="group status">
-      <span class="rating" title="Difficulty">{RATING_LABELS[game.rating]}</span>
+      <span class="rating" title="Difficulty" aria-label="Difficulty: {RATING_LABELS[game.rating]}">{RATING_LABELS[game.rating]}</span>
       <span class="timer" aria-label="Elapsed time">{formatTime(game.elapsedMs)}</span>
       {#if game.solved}<span class="badge">Solved</span>{/if}
     </div>

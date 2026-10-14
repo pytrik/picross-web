@@ -1,8 +1,9 @@
 # Picross Web — Specification
 
-Status: **v1 in progress**: 0.4.0 is live at
-<https://picross-web.pytrik.workers.dev>; the features in §1.3 are still to
-do. v1 is finished when §1.4 is met, and ships as **1.0.0**.
+Status: **v1 in progress**: 0.5.0 is live at
+<https://picross-web.pytrik.workers.dev>; the puzzle editor and database
+puzzles (§1.3) are still to do. v1 is finished when §1.4 is met, and ships as
+**1.0.0**.
 This document is the source of truth for behaviour. When the code and this spec disagree, one of them is a bug.
 
 Keywords **MUST**, **SHOULD**, **MAY** are used in the RFC 2119 sense.
@@ -17,7 +18,7 @@ hash format version (`p=1.`, §4.2) and the progress record version (`"v": 1`,
 
 ### 1.1 v1
 
-Implemented (0.4.0):
+Implemented (0.5.0):
 
 - Randomly generated, multi-color nonogram ("picross") puzzles.
 - Every generated puzzle has a **unique solution reachable by line logic alone**
@@ -28,13 +29,12 @@ Implemented (0.4.0):
   on Cloudflare Workers static assets.
 - Assists (§6.5), zoom & pan (§6.7), recent puzzles (§6.8), options and themes
   (§8).
+- Hint (§6.9), difficulty rating with a target difficulty (§5.5), and
+  picture-like grid styles (§5.6), added in 0.5.0.
 
-Implemented since 0.4.0: Hint (§6.9), difficulty rating (§5.5),
-picture-like grids (§5.6).
-
-Still to do: the other features in §1.3. With those, everything except database
-puzzles keeps working offline from the single file; database puzzles and the
-Library need the network (§11).
+Still to do: the puzzle editor and database puzzles (§1.3). With those,
+everything except database puzzles keeps working offline from the single
+file; database puzzles and the Library need the network (§11).
 
 ### 1.2 Out of scope for v1
 
@@ -49,11 +49,15 @@ Library need the network (§11).
   single-file build), haptics, win animation, and a fill-only-unknown drag
   modifier.
 
-### 1.3 Remaining v1 features
+### 1.3 v1 features
 
 Each feature gets its own spec section before work starts. That section fills
 in the design; the requirements below are fixed. Every feature MUST be covered
 by unit and e2e tests (§10.7) and documented in README.md.
+
+Done in 0.5.0: Hint, difficulty rating, picture-like grids (their
+requirements are kept below for reference). To do: puzzle editor, database
+puzzles.
 
 **Hint** (done: §6.9)
 
@@ -90,7 +94,7 @@ by unit and e2e tests (§10.7) and documented in README.md.
   every color used, roughly the chosen density, and the 10 s budget at the
   worst case. If repairs must break the style, uniqueness wins.
 
-**Puzzle editor**
+**Puzzle editor** (to do)
 
 - **Editor…** opens a mode for drawing a puzzle: size 5–30 × 5–30, 1–6 colors
   with the same palette presets and overrides as §5.4, and the same drawing
@@ -103,7 +107,7 @@ by unit and e2e tests (§10.7) and documented in README.md.
   produces keeps the §1.1 guarantee.
 - One unfinished draft is kept in `localStorage`. The editor works offline.
 
-**Database puzzles**
+**Database puzzles** (to do)
 
 - Curated puzzles live in the repository (format defined in §11), each with an
   id and a title. CI MUST validate every one (§4.1) and require it to be
@@ -158,6 +162,11 @@ v1 is finished, and 1.0.0 is tagged, when all of these hold:
 | **Run** | Maximal sequence of consecutive same-colored solution cells in a line. |
 | **Clue** | Ordered list of runs for a line, each `(length, color)`. |
 | **Puzzle key** | Stable identifier of a definition, used for storage (§7.2). |
+| **Rating** | A puzzle's difficulty (Easy / Medium / Hard / Unrated), derived from its definition (§5.5). |
+| **Target difficulty** | The difficulty asked for in the New puzzle dialog, or Any (§5.5). |
+| **Style** | How the generator shapes a grid: Random, Symmetric or Smooth (§5.6). |
+| **Hint** | The toolbar action that fills in one deducible cell (§6.9). Not to be confused with clue dimming (§6.5). |
+| **Clue dimming** | Fading clue runs the marks already complete (§6.5). |
 
 ---
 
@@ -195,7 +204,8 @@ On solve:
     puzzle's size, palette and difficulty as target (which may differ from
     the saved settings when the puzzle came from a shared link). An unrated
     puzzle uses target Any with the saved density (density is not part of a
-    definition). Saved settings are not changed.
+    definition). The style is the saved one (§5.6; style isn't part of a
+    definition either). Saved settings are not changed.
 - State is persisted as solved; reopening the link shows the solved board.
 
 ---
@@ -350,40 +360,7 @@ light and dark themes and for common color-vision deficiencies where possible):
 | High contrast | `#000000 #e69f00 #56b4e9 #009e73 #f0e442 #d55e00` (Okabe-Ito) |
 
 The user MAY override individual swatches. Duplicate colors MUST be prevented
-(the generate button is disabled with a hint).
-
-### 5.6 Grid styles
-
-The New puzzle dialog picks a style (default Random); it is saved with the
-other options (§7.3) and used by **Play another**. Style only shapes the seed
-grid and the repairs (§5.2 steps 1 and 4). Uniqueness, line-solvability,
-every color used, the density, the target difficulty and the time budget
-always hold. Implemented in `lib/puzzle/styles.ts`.
-
-- **Random**: each cell filled with probability `density` (the original
-  behaviour).
-- **Symmetric**: each attempt picks a mirror at random: left-right,
-  top-bottom, or both. A cell and its mirror images (its *orbit*) always
-  hold the same value: the seed fills whole orbits, the Voronoi color seeds
-  lie in the part every orbit starts in (so mirrored cells share a color),
-  and a repair flips the whole orbit.
-- **Smooth**: blob-like shapes with few isolated cells. Noise at `density`
-  gets two majority passes (a cell becomes filled if most of its 3×3 window
-  is, ties unchanged), then is grown at the blob edges (empty cells with the
-  most filled neighbours first) or shrunk (filled cells with the fewest) back
-  to exactly `density`. Repairs prefer *smoothing* flips: a filled cell with
-  mostly empty 4-neighbours, or an empty cell with mostly filled ones.
-  Measured: under 1% of filled cells isolated (no filled 4-neighbour) vs.
-  about 10% for Random.
-
-**Fallback.** Blob shapes have long runs and large overlaps, so Smooth
-puzzles rate Easy far more often than Random ones. Smooth + Hard is rare on
-large boards with many colors and practically never happens on thin boards
-(e.g. 0 in 100 at 5×30 with 6 colors). Rather than give up, generation
-switches to Random after a third of the time budget (§5.2 step 7), so
-"uniqueness wins" also covers difficulty. When that happens the app says so:
-"Couldn't keep the Smooth style at this size and difficulty; this puzzle is
-Random."
+(the generate button is disabled with a message).
 
 ### 5.5 Difficulty rating
 
@@ -436,6 +413,39 @@ slowest case remains Any at density 0.40 with 1 color, ~2–5 s at 30×30).
 The rating is shown in the toolbar, the win dialog and Recent puzzles (§6.8).
 Rating a 30×30 takes ~10 ms, so Recent fills ratings in after the list
 appears, one entry per task, cached for the session.
+
+### 5.6 Grid styles
+
+The New puzzle dialog picks a style (default Random); it is saved with the
+other options (§7.3) and used by **Play another**. Style only shapes the seed
+grid and the repairs (§5.2 steps 1 and 4). Uniqueness, line-solvability,
+every color used, the density, the target difficulty and the time budget
+always hold. Implemented in `lib/puzzle/styles.ts`.
+
+- **Random**: each cell filled with probability `density` (the original
+  behaviour).
+- **Symmetric**: each attempt picks a mirror at random: left-right,
+  top-bottom, or both. A cell and its mirror images (its *orbit*) always
+  hold the same value: the seed fills whole orbits, the Voronoi color seeds
+  lie in the part every orbit starts in (so mirrored cells share a color),
+  and a repair flips the whole orbit.
+- **Smooth**: blob-like shapes with few isolated cells. Noise at `density`
+  gets two majority passes (a cell becomes filled if most of its 3×3 window
+  is, ties unchanged), then is grown at the blob edges (empty cells with the
+  most filled neighbours first) or shrunk (filled cells with the fewest) back
+  to exactly `density`. Repairs prefer *smoothing* flips: a filled cell with
+  mostly empty 4-neighbours, or an empty cell with mostly filled ones.
+  Measured: under 1% of filled cells isolated (no filled 4-neighbour) vs.
+  about 10% for Random.
+
+**Fallback.** Blob shapes have long runs and large overlaps, so Smooth
+puzzles rate Easy far more often than Random ones. Smooth + Hard is rare on
+large boards with many colors and practically never happens on thin boards
+(e.g. 0 in 100 at 5×30 with 6 colors). Rather than give up, generation
+switches to Random after a third of the time budget (§5.2 step 7), so
+"uniqueness wins" also covers difficulty. When that happens the app says so:
+"Couldn't keep the Smooth style at this size and difficulty; this puzzle is
+Random."
 
 ---
 
@@ -500,8 +510,8 @@ sticky clues.
 
 - **Undo/redo**: unlimited within the session, per puzzle, in memory only
   (lost on reload; the board itself is not). Toolbar buttons + shortcuts.
-- **Clue completion hints**: computed from the board alone (never from the
-  solution, so they can't spoil anything):
+- **Clue dimming**: computed from the board alone (never from the
+  solution, so it can't spoil anything):
   - A line whose filled cells exactly match its clue renders its whole clue
     dimmed.
   - Otherwise, individual runs are dimmed when they are provably placed:
@@ -528,8 +538,8 @@ sticky clues.
   (`visibilitychange`), stops on solve. Persisted. Opening a puzzle that has
   any marks resumes the timer immediately, without waiting for a move, so a
   reload cannot be used to pause it.
-- **Restart**: (with confirm dialog) clears the board, timer, and checks for
-  this puzzle.
+- **Restart**: (with confirm dialog) clears the board, timer, checks and
+  hints (§6.9) for this puzzle.
 - **Share**: copies `location.href` to the clipboard (fallback: select-text
   dialog).
 
@@ -559,8 +569,8 @@ Hovering/focusing a cell highlights its row and column and their clues
 **Recent…** in the header opens a dialog listing the stored puzzles (§7.3),
 newest first. Each entry shows a thumbnail of the player's own board (never
 the solution; X and unknown both render as blank paper), the size, color
-count, difficulty (§5.5), status (Solved / In progress), elapsed time, and when it was last
-played. Activating an entry navigates to its hash (a normal history entry, so
+count, difficulty (§5.5), status (Solved / In progress), elapsed time, and
+when it was last played. Activating an entry navigates to its hash (a normal history entry, so
 Back returns). The current puzzle is marked "Current". Each entry except the
 current one has a **Delete** button that removes its stored progress.
 
@@ -577,7 +587,8 @@ step. Disabled on a solved board. Implemented in `lib/puzzle/hint.ts`.
 1. **Wrong marks first.** If any mark contradicts the solution (the same test
    as the mistake check, §6.5), nothing is deduced: the wrong cells are
    highlighted for 2 s exactly like a check, the message "Fix the highlighted
-   mistake(s) first." is shown, and the board is unchanged. This counts as
+   mistake first." (or "Fix the N highlighted mistakes first.") is shown, and
+   the board is unchanged. This counts as
    neither a hint nor a check.
 2. **Knowledge from the marks.** Each cell starts as: unknown → every state,
    X → empty, filled → its color.
@@ -625,13 +636,13 @@ picross:p:<puzzleKey>  →  JSON
   "board": "<base64url>",   // bit-packed like §4.2, value N+1 = X
   "elapsedMs": 123456,
   "checks": 2,
-  "hints": 1,               // added after 0.4.0 (§6.9); missing = 0
+  "hints": 1,               // added in 0.5.0 (§6.9); missing = 0
   "solved": false,
   "updatedAt": 1760000000000
 }
 ```
 
-`hash` was added in 0.4.0 and `hints` after it; readers MUST accept records
+`hash` was added in 0.4.0 and `hints` in 0.5.0; readers MUST accept records
 without them.
 `board` packing uses `bits = ceil(log2(N + 2))`. Writes are debounced (~300 ms)
 and flushed on `pagehide`/`visibilitychange:hidden`.
@@ -709,6 +720,13 @@ Unsolved boards with zero progress are not stored.
   pink, brown, tan, with dark/light prefixes). Colors that get the same name
   are numbered ("red 1", "red 2"). Every preset palette yields distinct names.
   Swatches use the same names.
+- New puzzle dialog: style and difficulty are `radiogroup`s of `radio`
+  buttons. A difficulty too big for the board says why in its accessible
+  name ("Hard, needs a board of at least 150 cells"), not only by fading.
+- The toolbar rating reads "Difficulty: Hard" (`aria-label`).
+- Hint results, mistake-check results and the style fallback are announced
+  through the `role="status"` toast; the hint's line highlight is never the
+  only signal (§6.9).
 - Everything reachable by keyboard; nothing relies on hover alone.
 
 ---
@@ -737,7 +755,7 @@ src/
   lib/
     puzzle/             pure logic, no DOM/Svelte
       types.ts          PuzzleDef, Clue, constants
-      clues.ts          solution → clues; board → completion hints, win check
+      clues.ts          solution → clues; board → clue dimming, win check
       codec.ts          bit packing, base64url, hash encode/decode, validation
       key.ts            FNV-1a puzzle key
       solver.ts         line solver (§5.3), line feasibility (§6.5)
@@ -761,7 +779,8 @@ src/
       format.ts         time/date format, contrast, color names
       zoom.ts           zoom limits and scroll anchoring (§6.7)
   styles/global.css
-scripts/                build.mjs, dev.mjs, inline-worker.mjs, serve.mjs
+scripts/                build.mjs, dev.mjs, inline-worker.mjs, serve.mjs,
+                        bench-generator.ts (npm run bench, §10.7)
 tests/                  e2e/ (Playwright), Node hooks for *.svelte.ts
 ```
 
@@ -838,17 +857,17 @@ modules (`*.svelte.ts`) are compiled on the fly by a Node loader hook
 - Time budget: `npm run bench` (`scripts/bench-generator.ts`, not part of
   `npm test`) generates every style × target × color count at 30×30 and 5×30,
   density 0.40, and fails on a timeout, a wrong rating or a run over 10 s.
-- completion-hint logic; line feasibility.
+- clue dimming logic; line feasibility.
 - hint: line choice and tie-breaks, wrong marks, stuck, partial facts
   (repeated hints solve generated multi-color puzzles, always with the
   solution's value).
 - LRU eviction; recent list (hash stored, legacy records skipped).
 - settings loading/clamping and palette overrides; color naming; date
   formatting; zoom limits and anchoring.
-- `Game`: strokes + undo/redo, hints, line errors, auto-X (incl. undo),
-  stroke cancel, timer (start, pause/resume, resume on load), solve, check,
-  restart, loading saved progress, hints (undo step, counting, persistence,
-  legacy records without `hints`).
+- `Game`: strokes + undo/redo, clue dimming, line errors, auto-X (incl.
+  undo), stroke cancel, timer (start, pause/resume, resume on load), solve,
+  check, restart, loading saved progress, Hint (undo step, counting,
+  persistence, legacy records without `hints`).
 
 End-to-end: Playwright Test (`tests/e2e/`, `npm run e2e`) against the
 production `dist/index.html`, served by `scripts/serve.mjs`, using the system
@@ -856,8 +875,9 @@ Google Chrome (`channel: 'chrome'`). Desktop project plus a Pixel 7 mobile
 project for tests tagged `@mobile`. Any console error fails a test. Covers
 input (click, right-click, drag + axis lock, keyboard), undo/redo, reload
 persistence, mistake check, hint (fill + highlight + undo, wrong marks,
-stuck, count on win), difficulty (area gating, density disabled, toolbar +
-win dialog, persisted target, Play another keeps it, Unrated in Recent),
+stuck, count on win), difficulty (area gating incl. accessible names,
+density disabled, toolbar + win dialog, persisted target, Play another keeps
+it, Unrated in Recent),
 style (Symmetric output mirrored, choice persisted),
 solving + win dialog actions, multi-color, Back
 navigation, restart, invalid links, palette validation, `file://` offline use,
