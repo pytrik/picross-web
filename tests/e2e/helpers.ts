@@ -65,10 +65,17 @@ export async function openNewPuzzleDialog(page: Page) {
   await expect(page.locator('dialog.new-puzzle')).toBeVisible();
 }
 
+/**
+ * Generates via the New puzzle dialog and waits until the new puzzle is on
+ * screen (the URL changes; a same-size board would otherwise look ready).
+ */
 export async function generateVia(page: Page, size: string, colors: number) {
+  const before = page.url();
   await openNewPuzzleDialog(page);
   const dialog = page.locator('dialog.new-puzzle');
   await dialog.getByRole('button', { name: size, exact: true }).click();
   await dialog.getByRole('button', { name: String(colors), exact: true }).click();
   await dialog.getByRole('button', { name: 'Generate' }).click();
+  await expect(page).not.toHaveURL(before);
+  await expect(page.getByRole('status').filter({ hasText: 'Generating' })).toHaveCount(0);
 }
