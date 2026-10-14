@@ -19,6 +19,9 @@ no guessing.
 - Undo/redo, clue completion hints, mistake checks, timer, keyboard play,
   touch support, and light/dark theme.
 
+**Play it at <https://picross-web.pytrik.workers.dev>**, or download the
+offline `index.html` from the [latest release](https://github.com/pytrik/picross-web/releases/latest).
+
 Full behaviour is specified in [SPEC.md](SPEC.md).
 
 ## How to play
@@ -29,11 +32,17 @@ between them; runs of **different** colors may touch.
 
 | Action | Mouse | Touch | Keyboard |
 |---|---|---|---|
-| Fill with active color | Left click / drag | Tap / drag (Fill tool) | Space / Enter |
-| Mark empty (X) | Right click / drag | Tap / drag (X tool) | `X` |
-| Clear | Click a cell again | Tap again | Backspace |
+| Move cursor | — | — | Arrow keys (focus the board first) |
+| Fill with active color | Left click / drag | Tap / drag | Space / Enter |
+| Mark empty (X) | Right click / drag, or left with the X tool | Tap / drag with the X tool | `X` |
+| Clear | Click a cell again | Tap again | Backspace / Delete |
+| Repeat last action while moving | — | — | Shift + Arrow keys |
 | Pick color | Click swatch | Tap swatch | `1`–`6` |
-| Undo / redo | Toolbar | Toolbar | Ctrl+Z / Ctrl+Y |
+| Undo / redo | Toolbar | Toolbar | Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z) |
+
+Drags stay on the row or column they start in, and only change cells that
+were in the same state as the first one, so a drag never wipes out other work.
+Dimmed clue numbers are runs your marks already complete.
 
 ## Development
 
@@ -43,7 +52,7 @@ Requires Node 24 LTS.
 npm install
 npm run dev        # http://localhost:3000 with live reload
 npm run check      # type check (svelte-check)
-npm test           # unit tests (node --test)
+npm test           # unit tests (node --test; *.svelte.ts compiled by a loader hook)
 npm run build      # → dist/index.html (single file, open it directly)
 npm run build:debug
 npm run e2e        # build, then Playwright end-to-end tests

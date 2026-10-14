@@ -12,7 +12,7 @@
   import { Game } from './lib/state/game.svelte.ts';
   import { effectivePalette, loadSettings, saveSettings, type Settings, type Theme } from './lib/state/settings.ts';
   import { defaultStorage } from './lib/state/storage.ts';
-  import { formatTime } from './lib/ui/format.ts';
+  import { formatTime, paletteNames } from './lib/ui/format.ts';
   import { generateInWorker } from './lib/workers/generate.ts';
   import type { GenerateOptions } from './lib/puzzle/generator.ts';
 
@@ -107,6 +107,9 @@
     const target = parseHash(location.hash);
     if (target.kind === 'none') return newPuzzle(true);
     if (target.kind === 'puzzle' && game && `p=${target.value}` === game.hash) return;
+    // Navigating (Back/Forward, pasted link) wins over a generation in flight;
+    // otherwise its result would replace the puzzle we're about to show.
+    genAbort?.abort();
     try {
       setGame(await resolvePuzzle(target));
     } catch {
@@ -247,12 +250,13 @@
   <div class="toolbar" role="toolbar" aria-label="Tools">
     <div class="group swatches" role="radiogroup" aria-label="Fill color">
       {#each game.def.palette as color, i (i)}
+        {@const name = game.colors === 1 ? 'Fill' : `${paletteNames(game.def.palette)[i]}`}
         <button
           class="swatch"
           role="radio"
           aria-checked={!xMode && activeColor === i + 1}
-          aria-label="Color {i + 1}"
-          title="Color {i + 1} ({i + 1})"
+          aria-label={name}
+          title="{name} ({i + 1})"
           style:background={color}
           disabled={game.solved}
           onclick={() => ((activeColor = i + 1), (xMode = false))}

@@ -1,7 +1,7 @@
 # Picross Web — Specification
 
-Status: **draft v1** (pre-implementation). This document is the source of truth
-for behaviour. When the code and this spec disagree, one of them is a bug.
+Status: **v1, implemented** (live at <https://picross-web.pytrik.workers.dev>).
+This document is the source of truth for behaviour. When the code and this spec disagree, one of them is a bug.
 
 Keywords **MUST**, **SHOULD**, **MAY** are used in the RFC 2119 sense.
 
@@ -68,7 +68,7 @@ On solve:
 
 - Timer stops (§6.5).
 - Board becomes read-only (X marks and unknown cells render as empty; filled
-  cells stay).
+  cells stay; no row/column hover highlighting).
 - A dialog shows: size, colors, elapsed time, number of mistake checks used,
   and three actions:
   - **Close**: dismiss, keep looking at the solved board.
@@ -144,8 +144,8 @@ definitions produce equal strings.
 |---|---|
 | Load with valid `#p=` | Show that puzzle; restore progress if stored. |
 | Load with no hash | Generate with last-used settings (§8), then `history.replaceState` the hash (no extra history entry). |
-| User clicks **New puzzle** | Generate, then set `location.hash` (creates a history entry, so Back returns to the previous puzzle). |
-| `hashchange` event (Back/Forward, pasted link) | Load the new puzzle; the old one's progress is already persisted. |
+| User generates a puzzle (**Generate** in the New puzzle dialog, or **Play another**) | Generate, then `history.pushState` the hash (creates a history entry, so Back returns to the previous puzzle; pushState does not fire `hashchange`, so no double load). |
+| `hashchange` event (Back/Forward, pasted link) | Load the new puzzle; the old one's progress is already persisted. A generation still in flight is cancelled, so it cannot replace the puzzle being navigated to. |
 
 ### 4.4 Invalid hash
 
@@ -175,7 +175,8 @@ Last-used options persist (§7.3).
 1. **Seed grid.** Each cell is filled with probability `density`. Filled cells
    get a color. For `N > 1`, colors SHOULD be spatially coherent rather than
    per-cell noise: pick `N` random seed points and assign each filled cell the
-   color of its nearest seed (Voronoi), then ensure every color appears.
+   color of its nearest seed (Voronoi). A finished grid that does not use every
+   color is discarded and generation restarts from step 1.
 2. **Line-solve** (§5.3) from an empty board using only clues.
 3. If fully solved → done (the result is unique and needs no guessing).
 4. Otherwise **repair**: pick a random cell the solver left undetermined, flip
@@ -229,10 +230,11 @@ The user MAY override individual swatches. Duplicate colors MUST be prevented
 
 - **Color swatches** (1..N): selecting one makes it the active fill color.
   Keyboard `1`–`6`.
-- **Mark X** tool.
-- On pointer devices: primary button = fill with active color, secondary button
-  (right-click) = X. Context menu suppressed on the board.
-- On touch: a tool toggle (Fill / X) is shown; tap/drag applies the active tool.
+- **Mark X** tool: an X button after the color swatches, shown on every
+  device. Selecting a swatch (or pressing `1`–`6`) switches back to filling.
+- Primary button / tap / drag applies the active tool (the selected color, or X
+  when the X tool is selected). Secondary button (right-click) always marks X.
+  Context menu suppressed on the board.
 
 ### 6.2 Click semantics
 
@@ -286,7 +288,9 @@ The user MAY override individual swatches. Duplicate colors MUST be prevented
   increments `checks` (shown on win).
 - **Timer**: elapsed play time, `mm:ss` (`h:mm:ss` past an hour). Starts on
   the first board change, pauses while the tab is hidden
-  (`visibilitychange`), stops on solve. Persisted.
+  (`visibilitychange`), stops on solve. Persisted. Opening a puzzle that has
+  any marks resumes the timer immediately, without waiting for a move, so a
+  reload cannot be used to pause it.
 - **Restart**: (with confirm dialog) clears the board, timer, and checks for
   this puzzle.
 - **Share**: copies `location.href` to the clipboard (fallback: select-text
@@ -294,7 +298,8 @@ The user MAY override individual swatches. Duplicate colors MUST be prevented
 
 ### 6.6 Highlighting
 
-Hovering/focusing a cell highlights its row and column and their clues.
+Hovering/focusing a cell highlights its row and column and their clues
+(not on a solved board).
 
 ---
 
@@ -342,16 +347,19 @@ Unsolved boards with zero progress are not stored.
 
 ## 8. UI layout
 
-- **Header**: app name, version, **New puzzle**, **Share**, theme toggle.
+- **Header**: app name, version, **New puzzle…** (opens the dialog), **Share**,
+  theme toggle (Auto / Light / Dark).
 - **New puzzle panel** (dialog): size presets + custom W/H, color count,
   palette preset, swatch overrides, density, **Generate**.
-- **Toolbar**: color swatches, Fill/X toggle, undo, redo, check, restart,
-  timer.
+- **Toolbar**: color swatches + X tool, undo, redo, check, restart, timer,
+  "Solved" badge.
 - **Board**: column clues on top (stacked bottom-aligned), row clues on the
   left (right-aligned), grid with a thicker rule every 5 cells.
 - Cell size is computed to fit the viewport (min 14 px, max 40 px). If it
   can't fit at the minimum, the board container scrolls (the page does not).
 - Light/dark theme follows `prefers-color-scheme`, overridable and persisted.
+  A tiny inline script in `<head>` applies it before first paint (no light
+  flash for dark users); the app keeps it in sync afterwards.
 - Clue text color: the run's palette color; when contrast with the background
   is too low (WCAG < 3:1) the number is drawn on a chip of that color with
   auto black/white text. Single-color puzzles use the normal text color.
@@ -364,10 +372,18 @@ Unsolved boards with zero progress are not stored.
 
 ## 9. Accessibility
 
-- The board is a single focusable `role="grid"` element with
-  `aria-activedescendant` for the cursor.
-- Each cell has an `aria-label`, e.g. "Row 3, column 7, filled red".
+- The cell area is a single focusable `role="grid"` element with
+  `aria-activedescendant` for the cursor. It contains only `row`s of
+  `gridcell`s; the clues sit outside it as two labelled lists ("Column clues",
+  "Row clues") of `listitem`s.
+- Each cell has an `aria-label`, e.g. "Row 3, column 7, filled red" (single
+  color: "filled"; on a solved board unknown/X read as "empty").
 - Clues get `aria-label`s like "Row 3 clue: 2 red, 1 blue".
+- Color names are derived from the hex value (hue/saturation/lightness
+  buckets: black, gray, red, orange, amber, yellow, green, teal, blue, purple,
+  pink, brown, tan, with dark/light prefixes). Colors that get the same name
+  are numbered ("red 1", "red 2"). Every preset palette yields distinct names.
+  Swatches use the same names.
 - Everything reachable by keyboard; nothing relies on hover alone.
 
 ---
@@ -386,26 +402,36 @@ Unsolved boards with zero progress are not stored.
 
 ```
 src/
-  main.ts, App.svelte, template.html
+  main.ts, template.html, global.d.ts
+  App.svelte            header, toolbar, dialogs (win, share, confirm), hash lifecycle
+  components/
+    Board.svelte        clues + grid, sizing, pointer/keyboard input
+    NewPuzzleDialog.svelte
   lib/
-    puzzle/
-      types.ts        PuzzleDef, BoardCell, Clue
-      clues.ts        solution → clues; board → completion hints
-      codec.ts        bit packing, base64url, hash encode/decode, validation
-      key.ts          FNV-1a puzzle key
-      solver.ts       line solver (§5.3)
-      generator.ts    seed + repair loop (§5.2)
-      palettes.ts     presets (§5.4)
+    puzzle/             pure logic, no DOM/Svelte
+      types.ts          PuzzleDef, Clue, constants
+      clues.ts          solution → clues; board → completion hints, win check
+      codec.ts          bit packing, base64url, hash encode/decode, validation
+      key.ts            FNV-1a puzzle key
+      solver.ts         line solver (§5.3)
+      generator.ts      seed + repair loop (§5.2)
+      palettes.ts       presets (§5.4)
     workers/
-      generate.worker.ts
+      generate.worker.ts  worker entry
+      generate.ts       spawns the inlined worker; main-thread fallback
     state/
-      persisted.ts    (scaffold helper)
-      progress.ts     localStorage records + LRU (§7)
-      history.ts      undo/redo
+      game.svelte.ts    Game: board, timer, undo, saves (Svelte runes)
+      progress.ts       localStorage records + LRU (§7)
+      settings.ts       last-used options + theme
+      history.ts        undo/redo stack
+      storage.ts        safe localStorage access
     source/
-      index.ts        PuzzleSource: resolve(hash) → PuzzleDef (§11)
-  components/         Board, Clues, Toolbar, NewPuzzleDialog, WinDialog, ...
+      index.ts          resolvePuzzle(hash) → LoadedPuzzle (§11)
+    ui/
+      format.ts         time format, contrast, color names
   styles/global.css
+scripts/                build.mjs, dev.mjs, inline-worker.mjs, serve.mjs
+tests/                  e2e/ (Playwright), Node hooks for *.svelte.ts
 ```
 
 Pure logic under `lib/puzzle` has **no DOM or Svelte imports** and is unit
@@ -433,14 +459,14 @@ thread. No extra files are emitted.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "picross-web",
-  "compatibility_date": "<date of first deploy>",
+  "compatibility_date": "2026-10-14",
   "assets": { "directory": "./dist" }
 }
 ```
 
 No Worker script in v1 (assets-only). Hash-based routing means no SPA fallback
-is needed. Served at `https://picross-web.<subdomain>.workers.dev`; a custom
-domain MAY be added later.
+is needed. Served at <https://picross-web.pytrik.workers.dev>; a custom domain
+MAY be added later.
 
 ### 10.6 CI/CD (`.github/workflows/deploy.yml`)
 
@@ -461,8 +487,10 @@ and release) on every branch push and pull request, with no secrets.
 
 ### 10.7 Testing
 
-`node --test` running `*.test.ts` directly (Node 24 type stripping). Required
-coverage:
+`node --test` running `*.test.ts` directly (Node 24 type stripping). Rune
+modules (`*.svelte.ts`) are compiled on the fly by a Node loader hook
+(`tests/register-svelte.mjs` → `svelte-hooks.mjs`: esbuild strips types, then
+`svelte/compiler` `compileModule`). Required coverage:
 
 - codec round-trip for all color counts, and rejection of malformed input
   (bad version, sizes, palette, length, padding bits, unused colors).
@@ -472,6 +500,9 @@ coverage:
   validated definitions.
 - completion-hint logic.
 - LRU eviction.
+- settings loading/clamping and palette overrides; color naming.
+- `Game`: strokes + undo/redo, hints, timer (start, pause/resume, resume on
+  load), solve, check, restart, loading saved progress.
 
 End-to-end: Playwright Test (`tests/e2e/`, `npm run e2e`) against the
 production `dist/index.html`, served by `scripts/serve.mjs`, using the system
@@ -480,7 +511,8 @@ project for tests tagged `@mobile`. Any console error fails a test. Covers
 input (click, right-click, drag + axis lock, keyboard), undo/redo, reload
 persistence, mistake check, solving + win dialog actions, multi-color, Back
 navigation, restart, invalid links, palette validation, `file://` offline use,
-and mobile layout/touch. Cells expose `data-v` (board value) for tests.
+screen-reader labels and grid structure, pre-paint theme, and mobile
+layout/touch. Cells expose `data-v` (board value) for tests.
 
 ### 10.8 Versioning
 

@@ -188,3 +188,44 @@ test('mobile: fits without horizontal page scroll, touch X tool works @mobile', 
   await cell(page, 0).tap();
   expect((await boardValues(page))[0]).toBe(X);
 });
+
+test('screen-reader labels use color names; grid contains only rows of cells', async ({ page }) => {
+  await generateVia(page, '10×10', 3);
+  await waitForBoard(page, 100);
+  await page.keyboard.press('2');
+  await clickCell(page, 0);
+  await expect(cell(page, 0)).toHaveAttribute('aria-label', 'Row 1, column 1, filled red');
+  await expect(page.getByRole('radio', { name: 'blue' })).toBeVisible();
+  await expect(page.getByRole('listitem').filter({ hasText: /\d/ }).first()).toHaveAttribute(
+    'aria-label',
+    /^Column 1 clue: (0|\d+ (black|red|blue)(, \d+ (black|red|blue))*)$/,
+  );
+  const stray = await page
+    .locator('[role=grid]')
+    .evaluate((grid) => [...grid.children].filter((c) => c.getAttribute('role') !== 'row').length);
+  expect(stray).toBe(0);
+});
+
+test('saved dark theme applies before the app script runs', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.evaluate(() => localStorage.setItem('picross:settings', JSON.stringify({ theme: 'dark' })));
+  // Record the theme when <body> starts parsing: after the head script, but
+  // before the app bundle (inlined at the end of body) has run.
+  await page.addInitScript(() => {
+    new MutationObserver((_, observer) => {
+      if (!document.body) return;
+      (window as unknown as { themeAtLoad: string | undefined }).themeAtLoad = document.documentElement.dataset.theme;
+      observer.disconnect();
+    }).observe(document, { childList: true, subtree: true });
+  });
+  await page.reload();
+  await waitForBoard(page);
+  expect(await page.evaluate(() => (window as unknown as { themeAtLoad?: string }).themeAtLoad)).toBe('dark');
+});
+
+test('solved board has no hover highlighting', async ({ page }) => {
+  await solve(page);
+  await page.getByRole('dialog', { name: 'Solved!' }).getByRole('button', { name: 'Close' }).click();
+  await cell(page, 55).hover();
+  await expect(page.locator('.cell.hl')).toHaveCount(0);
+});

@@ -25,5 +25,51 @@ export function contrast(a: string, b: string): number {
 /** Black or white, whichever reads better on `bg`. */
 export const textOn = (bg: string) => (contrast(bg, '#000000') >= contrast(bg, '#ffffff') ? '#000000' : '#ffffff');
 
-/** Human color names for aria labels: "color 2" is the honest fallback. */
-export const colorLabel = (index: number) => `color ${index}`;
+/** `#rrggbb` → [hue 0..360, saturation 0..1, lightness 0..1]. */
+function toHsl(hex: string): [number, number, number] {
+  const [r, g, b] = [0, 1, 2].map((i) => parseInt(hex.slice(1 + 2 * i, 3 + 2 * i), 16) / 255) as [number, number, number];
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  const d = max - min;
+  if (d === 0) return [0, 0, l];
+  const s = d / (1 - Math.abs(2 * l - 1));
+  const h = max === r ? ((g - b) / d + 6) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [h * 60, s, l];
+}
+
+const HUES: [number, string][] = [
+  [15, 'red'],
+  [35, 'orange'],
+  [48, 'amber'],
+  [70, 'yellow'],
+  [150, 'green'],
+  [185, 'teal'],
+  [250, 'blue'],
+  [290, 'purple'],
+  [335, 'pink'],
+  [360, 'red'],
+];
+
+/** Approximate English name for a color, for screen readers (SPEC §9). */
+export function colorName(hex: string): string {
+  const [h, s, l] = toHsl(hex);
+  if (l < 0.2 && (s < 0.25 || l < 0.12)) return 'black';
+  if (l > 0.93) return 'white';
+  if (s < 0.18) return l < 0.35 ? 'dark gray' : l > 0.7 ? 'light gray' : 'gray';
+  let name = HUES.find(([max]) => h < max)![1];
+  if (name === 'orange' || name === 'amber') {
+    // Muted oranges read as brown (dark) or tan (light).
+    if (l < 0.45 && s < 0.8) return l < 0.25 ? 'dark brown' : 'brown';
+    if (s < 0.5) return 'tan';
+  }
+  if (l < 0.3) name = `dark ${name}`;
+  else if (l > 0.7) name = `light ${name}`;
+  return name;
+}
+
+/** Names for a palette, numbered when two colors get the same name. */
+export function paletteNames(palette: string[]): string[] {
+  const names = palette.map(colorName);
+  return names.map((name, i) => (names.filter((n) => n === name).length > 1 ? `${name} ${names.slice(0, i + 1).filter((n) => n === name).length}` : name));
+}

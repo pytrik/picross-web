@@ -11,7 +11,7 @@
     "build": "node scripts/build.mjs",
     "build:debug": "node scripts/build.mjs --debug",
     "check": "svelte-check --tsconfig ./tsconfig.json",
-    "test": "node --test \"src/**/*.test.ts\"",
+    "test": "node --import ./tests/register-svelte.mjs --test \"src/**/*.test.ts\"",
     "e2e": "npm run build && playwright test"
   },
   "devDependencies": {

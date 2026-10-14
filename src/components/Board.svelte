@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { MARK_X, UNKNOWN, type Run } from '../lib/puzzle/types.ts';
   import { clickTarget, type Game } from '../lib/state/game.svelte.ts';
-  import { colorLabel, contrast, textOn } from '../lib/ui/format.ts';
+  import { contrast, paletteNames, textOn } from '../lib/ui/format.ts';
 
   interface Props {
     game: Game;
@@ -20,6 +20,8 @@
   const W = $derived(game.def.width);
   const H = $derived(game.def.height);
   const palette = $derived(game.def.palette);
+  /** Spoken color names (SPEC §9); single-color puzzles just say "filled". */
+  const names = $derived(paletteNames(palette));
 
   // --- sizing (SPEC §8) ------------------------------------------------------
 
@@ -27,7 +29,6 @@
   const CLUE = 0.72;
   let wrapEl: HTMLDivElement;
   let gridEl: HTMLDivElement;
-  let boardEl: HTMLDivElement;
   let wrapW = $state(0);
   let viewH = $state(0);
   let top = $state(0);
@@ -62,20 +63,30 @@
   const describeClue = (runs: Run[]) =>
     runs.length === 0
       ? '0'
-      : runs.map((r) => (palette.length === 1 ? `${r.len}` : `${r.len} ${colorLabel(r.color)}`)).join(', ');
+      : runs.map((r) => (palette.length === 1 ? `${r.len}` : `${r.len} ${names[r.color - 1]}`)).join(', ');
 
   // --- cursor & highlighting -------------------------------------------------
 
   let cursor = $state(0);
   let hover = $state<number | null>(null);
   let focused = $state(false);
-  const focus = $derived(hover ?? (focused ? cursor : null));
+  // No row/column highlighting once solved: the board is just a picture then.
+  const focus = $derived(game.solved ? null : (hover ?? (focused ? cursor : null)));
   const hlRow = $derived(focus === null ? -1 : Math.floor(focus / W));
   const hlCol = $derived(focus === null ? -1 : focus % W);
 
   function cellLabel(i: number): string {
     const v = game.board[i]!;
-    const state = v === UNKNOWN ? 'unknown' : v === MARK_X ? 'marked empty' : palette.length === 1 ? 'filled' : `filled ${colorLabel(v)}`;
+    const state =
+      v === UNKNOWN || v === MARK_X
+        ? game.solved
+          ? 'empty'
+          : v === UNKNOWN
+            ? 'unknown'
+            : 'marked empty'
+        : palette.length === 1
+          ? 'filled'
+          : `filled ${names[v - 1]}`;
     return `Row ${Math.floor(i / W) + 1}, column ${(i % W) + 1}, ${state}`;
   }
 
@@ -111,7 +122,7 @@
     const pos = cellAt(e, false);
     if (!pos) return;
     e.preventDefault();
-    boardEl.focus({ preventScroll: true });
+    gridEl.focus({ preventScroll: true });
     gridEl.setPointerCapture(e.pointerId);
     const [r, c] = pos;
     const index = r * W + c;
@@ -206,23 +217,13 @@
     style:--clue="{Math.round(cell * CLUE)}px"
     style:--font="{Math.max(9, Math.round(cell * 0.5))}px"
     style:grid-template-columns="auto {W * cell}px"
-    bind:this={boardEl}
-    role="grid"
-    aria-label="Picross board, {W} by {H}"
-    aria-rowcount={H}
-    aria-colcount={W}
-    aria-activedescendant="cell-{cursor}"
-    tabindex="0"
-    onkeydown={onKeyDown}
-    onfocus={() => (focused = true)}
-    onblur={() => (focused = false)}
   >
     <div class="corner"></div>
 
-    <div class="col-clues" style:grid-template-columns="repeat({W}, var(--cell))">
+    <div class="col-clues" role="list" aria-label="Column clues" style:grid-template-columns="repeat({W}, var(--cell))">
       {#each game.clues.cols as runs, c (c)}
         {@const done = game.colHints[c]!}
-        <div class="col-clue" class:hl={c === hlCol} aria-label="Column {c + 1} clue: {describeClue(runs)}">
+        <div class="col-clue" role="listitem" class:hl={c === hlCol} aria-label="Column {c + 1} clue: {describeClue(runs)}">
           {#each runs as run, k (k)}
             <span class="num" class:done={done[k]} class:chip={clueStyle(run).startsWith('background')} style={clueStyle(run)}>
               {run.len}
@@ -234,10 +235,10 @@
       {/each}
     </div>
 
-    <div class="row-clues" style:grid-template-rows="repeat({H}, var(--cell))">
+    <div class="row-clues" role="list" aria-label="Row clues" style:grid-template-rows="repeat({H}, var(--cell))">
       {#each game.clues.rows as runs, r (r)}
         {@const done = game.rowHints[r]!}
-        <div class="row-clue" class:hl={r === hlRow} aria-label="Row {r + 1} clue: {describeClue(runs)}">
+        <div class="row-clue" role="listitem" class:hl={r === hlRow} aria-label="Row {r + 1} clue: {describeClue(runs)}">
           {#each runs as run, k (k)}
             <span class="num" class:done={done[k]} class:chip={clueStyle(run).startsWith('background')} style={clueStyle(run)}>
               {run.len}
@@ -249,11 +250,20 @@
       {/each}
     </div>
 
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <!-- Only the cells are the ARIA grid: rows of gridcells, nothing else. -->
     <div
       class="grid"
       bind:this={gridEl}
       style:grid-template-columns="repeat({W}, var(--cell))"
+      role="grid"
+      aria-label="Picross board, {W} by {H}{game.solved ? ', solved' : ''}"
+      aria-rowcount={H}
+      aria-colcount={W}
+      aria-activedescendant="cell-{cursor}"
+      tabindex="0"
+      onkeydown={onKeyDown}
+      onfocus={() => (focused = true)}
+      onblur={() => (focused = false)}
       onpointerdown={onPointerDown}
       onpointermove={onPointerMove}
       onpointerup={onPointerUp}
@@ -300,7 +310,6 @@
   .board {
     display: grid;
     width: max-content;
-    outline: none;
     user-select: none;
     -webkit-user-select: none;
     font-size: var(--font);
@@ -367,6 +376,7 @@
     border: 2px solid var(--grid-strong);
     box-sizing: content-box;
     cursor: pointer;
+    outline: none; /* the cursor cell shows focus instead */
   }
 
   .row {

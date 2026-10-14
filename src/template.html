@@ -6,6 +6,15 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%234338ca'/%3E%3Cg fill='%23fff'%3E%3Crect x='3' y='3' width='4' height='4'/%3E%3Crect x='9' y='3' width='4' height='4'/%3E%3Crect x='3' y='9' width='4' height='4'/%3E%3C/g%3E%3C/svg%3E">
   <title>Picross</title>
   <meta name="description" content="Multi-color picross (nonogram) puzzles. Every puzzle is solvable by logic alone.">
+  <script>
+    // Apply the theme before first paint (no light flash for dark users).
+    // Mirrors App.svelte: saved setting wins, otherwise the system preference.
+    try {
+      var t = (JSON.parse(localStorage.getItem('picross:settings') || '{}') || {}).theme;
+      var dark = t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    } catch (e) {}
+  </script>
   <style><!-- STYLE --></style>
 </head>
 <body>
