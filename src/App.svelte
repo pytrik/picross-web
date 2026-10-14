@@ -10,6 +10,7 @@
   import RecentDialog from './components/RecentDialog.svelte';
   import { parseHash } from './lib/puzzle/codec.ts';
   import type { LineRef } from './lib/puzzle/hint.ts';
+  import { RATING_LABELS } from './lib/puzzle/rating.ts';
   import { MARK_X } from './lib/puzzle/types.ts';
   import { fromDefinition, resolvePuzzle, type LoadedPuzzle } from './lib/source/index.ts';
   import { Game } from './lib/state/game.svelte.ts';
@@ -88,6 +89,7 @@
     height: s.height,
     palette: effectivePalette(s),
     density: s.density,
+    difficulty: s.difficulty,
   });
 
   /** Options of the last generation attempt, so Retry repeats it. */
@@ -140,14 +142,15 @@
   }
 
   /**
-   * Same size and colors as the current puzzle (which may have come from a
-   * shared link, so not necessarily the saved settings). Density isn't part
-   * of a puzzle definition, so the saved density is used.
+   * Same size, colors and difficulty as the current puzzle (which may have
+   * come from a shared link, so not necessarily the saved settings). An
+   * unrated puzzle falls back to the saved density.
    */
   function playAnother() {
     if (!game) return;
     const { width, height, palette } = game.def;
-    newPuzzle(false, { width, height, palette, density: settings.density });
+    const difficulty = game.rating === 'unrated' ? 'any' : game.rating;
+    newPuzzle(false, { width, height, palette, density: settings.density, difficulty });
   }
 
   // --- actions ---------------------------------------------------------------
@@ -359,6 +362,7 @@
     </div>
 
     <div class="group status">
+      <span class="rating" title="Difficulty">{RATING_LABELS[game.rating]}</span>
       <span class="timer" aria-label="Elapsed time">{formatTime(game.elapsedMs)}</span>
       {#if game.solved}<span class="badge">Solved</span>{/if}
     </div>
@@ -429,6 +433,8 @@
       <dd>{game.def.width}×{game.def.height}</dd>
       <dt>Colors</dt>
       <dd>{game.colors}</dd>
+      <dt>Difficulty</dt>
+      <dd>{RATING_LABELS[game.rating]}</dd>
       <dt>Time</dt>
       <dd>{formatTime(game.elapsedMs)}</dd>
       <dt>Checks used</dt>
@@ -446,7 +452,7 @@
         }}>New puzzle…</button
       >
       <button
-        title="Same size and colors"
+        title="Same size, colors and difficulty"
         onclick={() => {
           winDialog.close();
           playAnother();
@@ -553,6 +559,11 @@
   .zoom button {
     min-width: 2.25rem;
     font-weight: 700;
+  }
+
+  .rating {
+    color: var(--muted);
+    font-size: 0.9rem;
   }
 
   .timer {

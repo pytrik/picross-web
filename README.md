@@ -20,14 +20,15 @@ no guessing.
   thumbnails of your progress.
 - Undo/redo, clue completion hints, impossible-line warnings, optional
   auto-X for finished lines, a run counter while dragging, mistake checks,
-  hints, timer, keyboard play, touch support with pinch-zoom, and light/dark theme.
+  hints, Easy/Medium/Hard ratings with a difficulty choice for new puzzles,
+  timer, keyboard play, touch support with pinch-zoom, and light/dark theme.
 
 **Play it at <https://picross-web.pytrik.workers.dev>**, or download the
 offline `index.html` from the [latest release](https://github.com/pytrik/picross-web/releases/latest).
 
-Full behaviour is specified in [SPEC.md](SPEC.md). The road to 1.0.0 (difficulty
-ratings, picture-like puzzles, a puzzle editor and a curated puzzle
-library) is in its §1.3, with the definition of done in §1.4.
+Full behaviour is specified in [SPEC.md](SPEC.md). The road to 1.0.0
+(picture-like puzzles, a puzzle editor and a curated puzzle library) is in
+its §1.3, with the definition of done in §1.4.
 
 ## How to play
 
@@ -55,6 +56,11 @@ Dimmed clue numbers are runs your marks already complete; a red clue means
 that line's marks can no longer fit it. **Options…** sets the theme
 (Auto / Light / Dark), turns that warning off, and can switch on auto-X, which marks the rest of a line empty as soon as its
 filled cells match the clue.
+
+Every puzzle is rated Easy, Medium or Hard by how long the chain of logical
+steps is. In **New puzzle…** you can ask for a difficulty (Medium needs a
+board of at least 75 cells, Hard at least 150); that picks the fill density
+for you.
 
 Stuck? **Hint** fills in one cell that logic can deduce from your marks and
 highlights the row or column that proves it. If you've made a mistake, it

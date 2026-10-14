@@ -1,5 +1,6 @@
 import { boardSatisfies, colIndices, completedRuns, computeClues, lineClue, rowIndices, sameClue } from '../puzzle/clues.ts';
 import { findHint, wrongCells, type Hint } from '../puzzle/hint.ts';
+import { ratePuzzle, type Rating } from '../puzzle/rating.ts';
 import { lineFeasible } from '../puzzle/solver.ts';
 import { MARK_X, UNKNOWN, type Clues, type PuzzleDef } from '../puzzle/types.ts';
 import type { LoadedPuzzle } from '../source/index.ts';
@@ -25,6 +26,8 @@ export class Game {
   readonly key: string;
   readonly clues: Clues;
   readonly colors: number;
+  /** Difficulty, derived from the definition (SPEC §5.5). */
+  readonly rating: Rating;
 
   board = $state.raw<Uint8Array>(new Uint8Array());
   checks = $state(0);
@@ -72,6 +75,7 @@ export class Game {
     this.key = puzzle.key;
     this.clues = computeClues(puzzle.def);
     this.colors = puzzle.def.palette.length;
+    this.rating = ratePuzzle(puzzle.def);
     this.#storage = storage;
     this.#onSolved = onSolved;
 

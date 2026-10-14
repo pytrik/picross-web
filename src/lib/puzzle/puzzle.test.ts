@@ -13,6 +13,7 @@ import {
 import { boardSatisfies, completedRuns, computeClues, lineClue } from './clues.ts';
 import { generatePuzzle, mulberry32 } from './generator.ts';
 import { findHint } from './hint.ts';
+import { DENSITY_BANDS, ratePuzzle, solveRounds } from './rating.ts';
 import { fnv1a64 } from './key.ts';
 import { lineFeasible, solveGrid, solveLine, masksToCells } from './solver.ts';
 import { MARK_X, PuzzleError, type PuzzleDef } from './types.ts';
@@ -254,4 +255,51 @@ test('repeated hints solve a generated puzzle, always with the solution value', 
       board[hint.cell] = hint.value;
     }
   }
+});
+
+// --- rating (SPEC §5.5) ------------------------------------------------------
+
+test('solveRounds counts parallel rounds, null when line logic is stuck', () => {
+  assert.equal(solveRounds(grid(['11111', '11111', '11111', '11111', '11111'])), 1);
+  // Round 1: row 1, rows 4–5 and the middle of column 1. Round 2 (from that
+  // snapshot): the rest of column 1 and columns 2–5.
+  assert.equal(solveRounds(grid(['11111', '1....', '1....', '.....', '.....'])), 2);
+  assert.equal(solveRounds(grid(['1....', '.1...', '..1..', '...1.', '....1'])), null);
+  assert.equal(ratePuzzle(grid(['1....', '.1...', '..1..', '...1.', '....1'])), 'unrated');
+});
+
+test('ratings are capped by area: under 75 cells easy, under 150 at most medium', () => {
+  const rng = mulberry32(11);
+  const sparse = (w: number, h: number) => generatePuzzle({ width: w, height: h, palette: PALETTE.slice(0, 1), density: 0.4 }, rng)!;
+  for (let i = 0; i < 10; i++) {
+    assert.equal(ratePuzzle(sparse(7, 10)), 'easy');
+    assert.notEqual(ratePuzzle(sparse(10, 14)), 'hard');
+  }
+});
+
+test('generator meets every target difficulty, including at the area limits', () => {
+  const rng = mulberry32(12);
+  const cases: [number, number, 'easy' | 'medium' | 'hard'][] = [
+    [5, 5, 'easy'],
+    [15, 5, 'medium'],
+    [10, 15, 'hard'],
+    [5, 30, 'hard'],
+    [20, 20, 'easy'],
+    [20, 20, 'medium'],
+    [20, 20, 'hard'],
+  ];
+  for (const [width, height, difficulty] of cases) {
+    for (const colors of [1, 6]) {
+      const def = generatePuzzle({ width, height, palette: PALETTE.slice(0, colors), density: 0.58, difficulty }, rng);
+      assert.ok(def, `${width}x${height} ${difficulty}`);
+      assert.equal(ratePuzzle(def), difficulty, `${width}x${height} c${colors}`);
+      assert.equal(solveGrid(computeClues(def), width, height, colors).solved, true);
+    }
+  }
+});
+
+test('density bands lie inside the slider range and do not overlap', () => {
+  const bands = Object.values(DENSITY_BANDS).sort((a, b) => a[0] - b[0]);
+  assert.ok(bands[0]![0] >= 0.4 && bands.at(-1)![1] <= 0.75);
+  for (let i = 1; i < bands.length; i++) assert.ok(bands[i - 1]![1] < bands[i]![0]);
 });

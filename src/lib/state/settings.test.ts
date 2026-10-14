@@ -29,6 +29,7 @@ test('out-of-range and wrong-typed values are clamped or replaced', () => {
       theme: 'neon',
       showErrors: 'yes',
       autoX: 1,
+      difficulty: 'brutal',
     }),
   );
   assert.equal(s.width, 30);
@@ -71,4 +72,9 @@ test('color names are distinct for every preset', () => {
   assert.equal(colorName('#ff0000'), 'red');
   assert.equal(colorName('#0000ff'), 'blue');
   assert.deepEqual(paletteNames(['#ff0000', '#ee1111']), ['red 1', 'red 2']);
+});
+
+test('difficulty target loads when valid', () => {
+  assert.equal(loadSettings(storageWith({ difficulty: 'hard' })).difficulty, 'hard');
+  assert.equal(loadSettings(storageWith({ difficulty: 'brutal' })).difficulty, 'any');
 });

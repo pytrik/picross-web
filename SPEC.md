@@ -29,7 +29,7 @@ Implemented (0.4.0):
 - Assists (§6.5), zoom & pan (§6.7), recent puzzles (§6.8), options and themes
   (§8).
 
-Implemented since 0.4.0: Hint (§6.9).
+Implemented since 0.4.0: Hint (§6.9), difficulty rating (§5.5).
 
 Still to do: the other features in §1.3. With those, everything except database
 puzzles keeps working offline from the single file; database puzzles and the
@@ -67,7 +67,7 @@ by unit and e2e tests (§10.7) and documented in README.md.
 - Hints used are counted, persisted with the progress (§7.1), and shown on
   win next to checks. Disabled on a solved board.
 
-**Difficulty rating**
+**Difficulty rating** (done: §5.5)
 
 - Every puzzle gets a rating (Easy / Medium / Hard) computed deterministically
   from its definition by measuring line-solver effort; the metric and
@@ -129,7 +129,8 @@ v1 is finished, and 1.0.0 is tagged, when all of these hold:
 2. `npm run check`, `npm test` and `npm run e2e` pass in CI, and each new e2e
    test passes `--repeat-each 5` locally.
 3. The generator stays within its 10 s budget at the worst case: 30×30,
-   density 0.40, 6 colors, for every style and difficulty target.
+   density 0.40, every color count (1 color is the slowest), for every style
+   and difficulty target.
 4. Compatibility: every `p=` link and every stored progress record created by
    0.x still opens, with its progress.
 5. Offline: the release `index.html` opened from `file://` works for
@@ -185,14 +186,15 @@ On solve:
 - Timer stops (§6.5).
 - Board becomes read-only (X marks and unknown cells render as empty; filled
   cells stay; no row/column hover highlighting).
-- A dialog shows: size, colors, elapsed time, number of mistake checks used,
-  and three actions:
+- A dialog shows: size, colors, difficulty (§5.5), elapsed time, number of
+  mistake checks used, number of hints used (§6.9), and three actions:
   - **Close**: dismiss, keep looking at the solved board.
   - **New puzzle…**: opens the same settings dialog as the header button.
   - **Play another**: immediately generates a new puzzle with the solved
-    puzzle's size and palette (which may differ from the saved settings when
-    the puzzle came from a shared link) and the saved density (density is not
-    part of a definition). Saved settings are not changed.
+    puzzle's size, palette and difficulty as target (which may differ from
+    the saved settings when the puzzle came from a shared link). An unrated
+    puzzle uses target Any with the saved density (density is not part of a
+    definition). Saved settings are not changed.
 - State is persisted as solved; reopening the link shows the solved board.
 
 ---
@@ -282,7 +284,8 @@ version") and generate a fresh puzzle via `replaceState`.
 | Color count | 1–6 | 1 |
 | Palette preset | see §5.4 | "Classic" |
 | Per-swatch override | color input per swatch | — |
-| Fill density | 0.40–0.75 | 0.58 |
+| Fill density | 0.40–0.75 (only with difficulty Any) | 0.58 |
+| Difficulty | Any, Easy, Medium, Hard (§5.5) | Any |
 
 Last-used options persist (§7.3).
 
@@ -300,6 +303,9 @@ Last-used options persist (§7.3).
    re-validate, and go to step 2. Repeat up to `maxRepairs = W*H`.
 5. If repairs run out, restart from step 1. Give up after a time budget
    (default 10 s) and show an error with a **Retry** button.
+6. With a target difficulty (§5.5), each attempt draws its seed density from
+   the target's band instead of the slider, and a puzzle whose rating isn't
+   the target is discarded (restart from step 1, same time budget).
 
 Generation MUST run off the main thread (Web Worker, §10.3) and the UI MUST show
 a spinner + **Cancel**.
@@ -320,8 +326,8 @@ Standard multi-color line solver:
 - Contradiction (empty set) means the clues are inconsistent → treat as a
   generator bug (assert).
 
-The same solver is reused by tests, line errors (§6.5), the hint (§6.9), and
-the planned difficulty rating and editor (§1.3).
+The same solver is reused by tests, line errors (§6.5), the hint (§6.9), the
+difficulty rating (§5.5), and the planned editor (§1.3).
 
 ### 5.4 Palette presets
 
@@ -338,6 +344,58 @@ light and dark themes and for common color-vision deficiencies where possible):
 
 The user MAY override individual swatches. Duplicate colors MUST be prevented
 (the generate button is disabled with a hint).
+
+### 5.5 Difficulty rating
+
+Every puzzle is rated **Easy**, **Medium**, **Hard** or **Unrated**,
+computed from its definition alone (`lib/puzzle/rating.ts`), so a shared link
+shows the same rating everywhere. It is never stored, not in the hash and not
+in progress records.
+
+**Metric.** Line-solve from an empty board in *rounds*: each round solves
+every line against the same snapshot of knowledge (as if all lines were
+worked on in parallel), then applies all narrowings together. `rounds` is the
+number of rounds that change something until every cell is determined; it
+measures the length of the chain of deductions, independent of line order.
+If line logic gets stuck, the puzzle is **Unrated**. Otherwise
+`effort = rounds / (W + H)`:
+
+| Effort | Rating |
+|---|---|
+| < 0.20 | Easy |
+| 0.20 – < 0.30 | Medium |
+| ≥ 0.30 | Hard |
+
+**Area cap.** Small boards can't be hard in a meaningful way, and the
+generator can't reliably reach those ratings there. Medium needs an area
+`W × H ≥ 75`, Hard `≥ 150`. A puzzle rated above what its area allows is
+shown at the highest level allowed (so a 5×5 is always Easy).
+
+**Target difficulty** (New puzzle dialog, default Any). Difficulty depends
+almost entirely on fill density, so a target sets the density instead of
+filtering it. Any uses the density slider as before. Easy / Medium / Hard
+disable the slider (showing the band instead) and each attempt draws its seed
+density uniformly from:
+
+| Target | Density band |
+|---|---|
+| Easy | 0.68 – 0.75 |
+| Medium | 0.52 – 0.62 |
+| Hard | 0.40 – 0.48 |
+
+then regenerates until the rating matches (§5.2 step 6). Targets that the
+area cap forbids stay selectable but are marked ("Needs a board of at least
+N cells"); while one is selected, an error explains it and **Generate** is
+disabled.
+
+The thresholds and bands come from sampling generated puzzles for sizes 5×5
+to 30×30, 1–6 colors and the full density range; with them every allowed
+target is met in well under a second, also for thin boards like 5×30 (the
+slowest case remains Any at density 0.40 with 1 color, ~2–5 s at 30×30).
+
+The rating is shown in the toolbar, the win dialog and Recent puzzles (§6.8).
+Rating a 30×30 takes ~10 ms, so Recent fills ratings in after the list
+appears, one entry per task, cached for the session.
 
 ---
 
@@ -461,7 +519,7 @@ Hovering/focusing a cell highlights its row and column and their clues
 **Recent…** in the header opens a dialog listing the stored puzzles (§7.3),
 newest first. Each entry shows a thumbnail of the player's own board (never
 the solution; X and unknown both render as blank paper), the size, color
-count, status (Solved / In progress), elapsed time, and when it was last
+count, difficulty (§5.5), status (Solved / In progress), elapsed time, and when it was last
 played. Activating an entry navigates to its hash (a normal history entry, so
 Back returns). The current puzzle is marked "Current". Each entry except the
 current one has a **Delete** button that removes its stored progress.
@@ -550,6 +608,9 @@ picross:index     →  JSON [{ "k": "<puzzleKey>", "t": updatedAt }, ...]
 picross:settings  →  JSON last-used generator options (§5.1) + UI prefs
 ```
 
+Generator options include `difficulty` (`any` | `easy` | `medium` | `hard`;
+anything else loads as `any`).
+
 UI prefs: `theme` (§8), `showErrors` (default `true`) and `autoX` (default
 `false`) (§6.5). Missing or non-boolean values fall back to the defaults.
 
@@ -566,12 +627,12 @@ Unsolved boards with zero progress are not stored.
 - **Header**: app name, version, **New puzzle…** (opens the dialog),
   **Recent…** (§6.8), **Share**, **Options…**.
 - **New puzzle panel** (dialog): size presets + custom W/H, color count,
-  palette preset, swatch overrides, density, **Generate**.
+  palette preset, swatch overrides, difficulty (§5.5), density, **Generate**.
 - **Options** (dialog): theme radio buttons (Auto / Light / Dark), and
   checkboxes "Flag impossible lines" (`showErrors`) and "Auto-X finished
   lines" (`autoX`) (§6.5). Changes apply immediately and persist.
 - **Toolbar**: color swatches + X tool, undo, redo, check, hint, restart, zoom
-  −/+ (§6.7), timer, "Solved" badge.
+  −/+ (§6.7), difficulty (§5.5), timer, "Solved" badge.
 - **Board**: column clues on top (stacked bottom-aligned), row clues on the
   left (right-aligned), grid with a thicker rule every 5 cells.
 - Cell size is computed to fit the viewport (min 14 px, max 40 px), then
@@ -639,7 +700,8 @@ src/
       key.ts            FNV-1a puzzle key
       solver.ts         line solver (§5.3), line feasibility (§6.5)
       hint.ts           next hint, wrong cells (§6.9)
-      generator.ts      seed + repair loop (§5.2)
+      generator.ts      seed + repair loop (§5.2), target difficulty
+      rating.ts         difficulty rating, area caps, density bands (§5.5)
       palettes.ts       presets (§5.4)
     workers/
       generate.worker.ts  worker entry
@@ -723,7 +785,10 @@ modules (`*.svelte.ts`) are compiled on the fly by a Node loader hook
 - clue derivation incl. multi-color adjacency.
 - solver: known unique puzzles solve; known ambiguous ones don't fully solve.
 - generator: N random runs per color count produce valid, line-solvable,
-  validated definitions.
+  validated definitions; every target difficulty is met, incl. at the area
+  limits and on thin boards.
+- rating: round count, Unrated for non-line-solvable puzzles, area caps,
+  density bands.
 - completion-hint logic; line feasibility.
 - hint: line choice and tie-breaks, wrong marks, stuck, partial facts
   (repeated hints solve generated multi-color puzzles, always with the
@@ -742,7 +807,9 @@ Google Chrome (`channel: 'chrome'`). Desktop project plus a Pixel 7 mobile
 project for tests tagged `@mobile`. Any console error fails a test. Covers
 input (click, right-click, drag + axis lock, keyboard), undo/redo, reload
 persistence, mistake check, hint (fill + highlight + undo, wrong marks,
-stuck, count on win), solving + win dialog actions, multi-color, Back
+stuck, count on win), difficulty (area gating, density disabled, toolbar +
+win dialog, persisted target, Play another keeps it, Unrated in Recent),
+solving + win dialog actions, multi-color, Back
 navigation, restart, invalid links, palette validation, `file://` offline use,
 screen-reader labels and grid structure, pre-paint theme, options (line
 errors, auto-X), run counter, recent puzzles, zoom buttons + sticky clues,

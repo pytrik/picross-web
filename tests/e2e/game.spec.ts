@@ -110,11 +110,12 @@ test('win dialog "New puzzle…" opens the settings dialog', async ({ page }) =>
   await expect(page.locator('dialog.new-puzzle')).toBeVisible();
 });
 
-test('win dialog "Play another" generates a new puzzle with the same size and colors', async ({ page }) => {
+test('win dialog "Play another" generates a new puzzle with the same size, colors and difficulty', async ({ page }) => {
   await generateVia(page, '15×15', 3);
   await waitForBoard(page, 225);
   const first = await currentPuzzle(page);
   const firstUrl = page.url();
+  const rating = await page.locator('.toolbar .rating').textContent();
 
   await solve(page);
   await page.getByRole('dialog', { name: 'Solved!' }).getByRole('button', { name: 'Play another' }).click();
@@ -123,6 +124,7 @@ test('win dialog "Play another" generates a new puzzle with the same size and co
   const second = await currentPuzzle(page);
   expect([second.width, second.height]).toEqual([15, 15]);
   expect(second.palette).toEqual(first.palette);
+  await expect(page.locator('.toolbar .rating')).toHaveText(rating!);
   expect(await boardValues(page)).toEqual(new Array(225).fill(0));
 });
 

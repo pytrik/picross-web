@@ -18,7 +18,8 @@ file holds the non-obvious things learned while building it.
 - Right after a deploy, Cloudflare's edge can serve the previous HTML for a
   short while. That is not a failed deploy; retry before debugging.
 - When touching the generator, check it still fits the 10 s budget at the
-  worst case (30×30, density 0.40; ~0.7–3 s at the time of writing).
+  worst case (30×30, density 0.40, **1 color** is slowest; ~2–5 s at the time
+  of writing, almost all of it failed repair walks, not solver speed).
 
 ## Gotchas
 

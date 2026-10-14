@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { RATING_LABELS, ratePuzzle, type Rating } from '../lib/puzzle/rating.ts';
   import { MARK_X, UNKNOWN } from '../lib/puzzle/types.ts';
   import { clearProgress, listRecent, type RecentEntry } from '../lib/state/progress.ts';
   import type { KV } from '../lib/state/storage.ts';
@@ -16,10 +17,30 @@
   let dialog: HTMLDialogElement;
   let entries = $state.raw<RecentEntry[]>([]);
 
+  // Ratings (SPEC §5.5) take up to ~10 ms each for big boards, so they are
+  // filled in after the list shows, one per task, and kept for the session.
+  const ratingCache = new Map<string, Rating>();
+  let ratings = $state.raw(new Map<string, Rating>());
+  let ratingRun = 0;
+
+  async function rateEntries() {
+    const run = ++ratingRun;
+    for (const entry of entries) {
+      if (!ratingCache.has(entry.key)) {
+        await new Promise((resolve) => setTimeout(resolve));
+        if (run !== ratingRun) return;
+        ratingCache.set(entry.key, ratePuzzle(entry.def));
+      }
+      ratings = new Map(ratingCache);
+    }
+  }
+
   /** Callers flush the current game first so its entry is up to date. */
   export function open() {
     entries = listRecent(storage);
+    ratings = new Map(ratingCache);
     dialog.showModal();
+    rateEntries();
   }
 
   function remove(key: string) {
@@ -65,6 +86,7 @@
               <span class="title">
                 {entry.def.width}×{entry.def.height} · {entry.def.palette.length}
                 {entry.def.palette.length === 1 ? 'color' : 'colors'}
+                {#if ratings.has(entry.key)}· {RATING_LABELS[ratings.get(entry.key)!]}{/if}
                 {#if current}<span class="tag">Current</span>{/if}
               </span>
               <span class="meta">

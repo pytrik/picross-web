@@ -1,5 +1,6 @@
 import { validatePuzzle } from './codec.ts';
 import { computeClues } from './clues.ts';
+import { DENSITY_BANDS, ratePuzzle, type Target } from './rating.ts';
 import { isSingle, solveGrid } from './solver.ts';
 import type { PuzzleDef } from './types.ts';
 
@@ -7,8 +8,10 @@ export interface GenerateOptions {
   width: number;
   height: number;
   palette: string[];
-  /** Probability a cell is filled, 0.40..0.75. */
+  /** Probability a cell is filled, 0.40..0.75. Ignored with a target difficulty. */
   density: number;
+  /** Target difficulty (SPEC §5.5); 'any' or absent uses `density`. */
+  difficulty?: Target;
 }
 
 export type Rng = () => number;
@@ -49,9 +52,9 @@ function makeColorer(width: number, height: number, colors: number, rng: Rng) {
   };
 }
 
-function seedGrid(opts: GenerateOptions, rng: Rng, colorOf: (cell: number) => number): Uint8Array {
-  const cells = new Uint8Array(opts.width * opts.height);
-  for (let i = 0; i < cells.length; i++) cells[i] = rng() < opts.density ? colorOf(i) : 0;
+function seedGrid(width: number, height: number, density: number, rng: Rng, colorOf: (cell: number) => number): Uint8Array {
+  const cells = new Uint8Array(width * height);
+  for (let i = 0; i < cells.length; i++) cells[i] = rng() < density ? colorOf(i) : 0;
   return cells;
 }
 
@@ -70,36 +73,49 @@ export interface GenerateLimits {
 }
 
 /**
- * Generates a puzzle with a unique solution reachable by line logic alone.
- * Returns null when the time budget runs out or it is cancelled.
+ * Generates a puzzle with a unique solution reachable by line logic alone,
+ * at the target difficulty if one is given (SPEC §5.2, §5.5). Returns null
+ * when the time budget runs out or it is cancelled.
  */
 export function generatePuzzle(opts: GenerateOptions, rng: Rng = cryptoRng(), limits: GenerateLimits = {}): PuzzleDef | null {
+  const deadline = Date.now() + (limits.timeBudgetMs ?? 10_000);
+  const target = opts.difficulty ?? 'any';
+  while (Date.now() < deadline && !limits.cancelled?.()) {
+    let density = opts.density;
+    if (target !== 'any') {
+      const [lo, hi] = DENSITY_BANDS[target];
+      density = lo + rng() * (hi - lo);
+    }
+    const def = attempt(opts, density, rng, deadline);
+    if (def && (target === 'any' || ratePuzzle(def) === target)) return def;
+  }
+  return null;
+}
+
+/** One seed grid plus repairs (SPEC §5.2 steps 1–4); null if it fails. */
+function attempt(opts: GenerateOptions, density: number, rng: Rng, deadline: number): PuzzleDef | null {
   const { width, height, palette } = opts;
   const colors = palette.length;
-  const deadline = Date.now() + (limits.timeBudgetMs ?? 10_000);
   const maxRepairs = width * height;
+  const colorOf = makeColorer(width, height, colors, rng);
+  const cells = seedGrid(width, height, density, rng, colorOf);
 
-  while (Date.now() < deadline && !limits.cancelled?.()) {
-    const colorOf = makeColorer(width, height, colors, rng);
-    const cells = seedGrid(opts, rng, colorOf);
-
-    for (let repair = 0; repair <= maxRepairs && Date.now() < deadline; repair++) {
-      const result = solveGrid(computeClues({ width, height, cells }), width, height, colors);
-      if (result.contradiction) throw new Error('Solver contradiction on generated clues');
-      if (result.solved) {
-        if (!usesAllColors(cells, colors)) break; // restart with a fresh grid
-        const def: PuzzleDef = { width, height, palette: [...palette], cells };
-        validatePuzzle(def);
-        return def;
-      }
-      // Flip a random undetermined cell and try again.
-      const open: number[] = [];
-      result.masks.forEach((m, i) => {
-        if (!isSingle(m)) open.push(i);
-      });
-      const cell = open[Math.floor(rng() * open.length)]!;
-      cells[cell] = cells[cell] ? 0 : colorOf(cell);
+  for (let repair = 0; repair <= maxRepairs && Date.now() < deadline; repair++) {
+    const result = solveGrid(computeClues({ width, height, cells }), width, height, colors);
+    if (result.contradiction) throw new Error('Solver contradiction on generated clues');
+    if (result.solved) {
+      if (!usesAllColors(cells, colors)) return null; // restart with a fresh grid
+      const def: PuzzleDef = { width, height, palette: [...palette], cells };
+      validatePuzzle(def);
+      return def;
     }
+    // Flip a random undetermined cell and try again.
+    const open: number[] = [];
+    result.masks.forEach((m, i) => {
+      if (!isSingle(m)) open.push(i);
+    });
+    const cell = open[Math.floor(rng() * open.length)]!;
+    cells[cell] = cells[cell] ? 0 : colorOf(cell);
   }
   return null;
 }

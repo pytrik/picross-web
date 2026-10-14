@@ -1,4 +1,4 @@
-import { boardValues, cell, cells, clickCell, expect, gotoPuzzle, solve, test } from './helpers.ts';
+import { boardValues, cell, cells, clickCell, expect, gotoPuzzle, openNewPuzzleDialog, solve, test } from './helpers.ts';
 
 const X = 255;
 
@@ -83,6 +83,8 @@ test('recent puzzles list, reopen, Back, and delete', async ({ page }) => {
   await expect(items).toHaveCount(2);
   await expect(items.nth(0)).toContainText('Current');
   await expect(items.nth(0)).toContainText('5×5 · 1 color');
+  // Every line is [1]: line logic can't solve it.
+  await expect(items.nth(0)).toContainText('Unrated');
   await expect(items.nth(0)).toContainText('In progress');
   await expect(items.nth(0).getByRole('button', { name: /Delete/ })).toHaveCount(0);
 
@@ -240,4 +242,40 @@ test('hints used survive a reload and show on win; Hint is disabled once solved'
   await expect(dialog.locator('dt', { hasText: 'Hints used' }).locator('+ dd')).toHaveText('2');
   await dialog.getByRole('button', { name: 'Close' }).click();
   await expect(page.getByRole('button', { name: 'Hint' })).toBeDisabled();
+});
+
+test('difficulty: gated by area, sets density, shown in toolbar and win dialog, persisted', async ({ page }) => {
+  await gotoPuzzle(page, ['11111', '.....', '..2..', '.....', '.....']);
+  await expect(page.locator('.toolbar .rating')).toHaveText('Easy');
+
+  await openNewPuzzleDialog(page);
+  const dialog = page.locator('dialog.new-puzzle');
+  const level = (name: string) => dialog.getByRole('radio', { name, exact: true });
+  const density = dialog.getByRole('slider', { name: 'Density' });
+  await dialog.getByRole('button', { name: '5×5', exact: true }).click();
+  await expect(level('Hard')).toHaveAttribute('title', 'Needs a board of at least 150 cells');
+  await level('Hard').click();
+  await expect(level('Hard')).toHaveAttribute('aria-checked', 'true');
+  await expect(dialog.locator('.error')).toHaveText(/Hard needs a board of at least 150 cells; this one has 25\./);
+  await expect(dialog.getByRole('button', { name: 'Generate' })).toBeDisabled();
+  await expect(density).toBeDisabled();
+  await expect(dialog.locator('legend', { hasText: 'Density' })).toContainText('40–48%, set by difficulty');
+
+  await dialog.getByRole('button', { name: '15×15', exact: true }).click();
+  await expect(dialog.locator('.error')).toHaveCount(0);
+  const before = page.url();
+  await dialog.getByRole('button', { name: 'Generate' }).click();
+  await expect(page).not.toHaveURL(before);
+  await expect(page.locator('.toolbar .rating')).toHaveText('Hard');
+
+  await solve(page);
+  const win = page.getByRole('dialog', { name: 'Solved!' });
+  await expect(win.locator('dt', { hasText: 'Difficulty' }).locator('+ dd')).toHaveText('Hard');
+  await win.getByRole('button', { name: 'Close' }).click();
+
+  await page.reload();
+  await openNewPuzzleDialog(page);
+  await expect(level('Hard')).toHaveAttribute('aria-checked', 'true');
+  await level('Any').click();
+  await expect(density).toBeEnabled();
 });

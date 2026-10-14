@@ -1,5 +1,6 @@
 <script lang="ts">
   import { PALETTES, paletteById } from '../lib/puzzle/palettes.ts';
+  import { DENSITY_BANDS, DIFFICULTIES, MIN_AREA, RATING_LABELS, difficultyAllowed } from '../lib/puzzle/rating.ts';
   import { MAX_COLORS, MAX_SIZE, MIN_SIZE } from '../lib/puzzle/types.ts';
   import { DEFAULT_SETTINGS, MAX_DENSITY, MIN_DENSITY, effectivePalette, type Settings } from '../lib/state/settings.ts';
 
@@ -21,6 +22,10 @@
   const PRESETS = [5, 10, 15, 20, 25];
   const colors = $derived(effectivePalette(draft));
   const duplicate = $derived(new Set(colors).size !== colors.length);
+  /** SPEC §5.5: Medium and Hard need a large enough board. */
+  const tooSmall = $derived(draft.difficulty !== 'any' && !difficultyAllowed(draft.difficulty, draft.width, draft.height));
+  const band = $derived(draft.difficulty === 'any' ? null : DENSITY_BANDS[draft.difficulty]);
+  const pct = (v: number) => Math.round(v * 100);
   const clampSize = (v: number) => Math.min(MAX_SIZE, Math.max(MIN_SIZE, Math.round(v) || MIN_SIZE));
 
   function setOverride(i: number, value: string) {
@@ -32,7 +37,7 @@
 
   function submit(e: SubmitEvent) {
     e.preventDefault();
-    if (duplicate) return;
+    if (duplicate || tooSmall) return;
     draft.width = clampSize(draft.width);
     draft.height = clampSize(draft.height);
     dialog.close();
@@ -101,14 +106,58 @@
     </fieldset>
 
     <fieldset>
-      <legend>Density <span class="muted">{Math.round(draft.density * 100)}%</span></legend>
-      <input type="range" min={MIN_DENSITY} max={MAX_DENSITY} step="0.01" bind:value={draft.density} />
+      <legend>Difficulty</legend>
+      <div class="chips" role="radiogroup" aria-label="Difficulty">
+        <button
+          type="button"
+          class="chip"
+          role="radio"
+          aria-checked={draft.difficulty === 'any'}
+          class:active={draft.difficulty === 'any'}
+          onclick={() => (draft.difficulty = 'any')}>Any</button
+        >
+        {#each DIFFICULTIES as level (level)}
+          {@const allowed = difficultyAllowed(level, draft.width, draft.height)}
+          <button
+            type="button"
+            class="chip"
+            role="radio"
+            aria-checked={draft.difficulty === level}
+            class:active={draft.difficulty === level}
+            class:unavailable={!allowed}
+            title={allowed ? undefined : `Needs a board of at least ${MIN_AREA[level]} cells`}
+            onclick={() => (draft.difficulty = level)}>{RATING_LABELS[level]}</button
+          >
+        {/each}
+      </div>
+      {#if tooSmall && draft.difficulty !== 'any'}
+        {@const area = draft.width * draft.height}
+        <p class="error">{RATING_LABELS[draft.difficulty]} needs a board of at least {MIN_AREA[draft.difficulty]} cells; this one has {area}.</p>
+      {/if}
+    </fieldset>
+
+    <fieldset>
+      <legend>
+        Density
+        <span class="muted">
+          {#if band}{pct(band[0])}–{pct(band[1])}%, set by difficulty{:else}{pct(draft.density)}%{/if}
+        </span>
+      </legend>
+      <input
+        type="range"
+        min={MIN_DENSITY}
+        max={MAX_DENSITY}
+        step="0.01"
+        aria-label="Density"
+        disabled={band !== null}
+        bind:value={draft.density}
+      />
       <div class="range-labels"><span>Sparse</span><span>Dense</span></div>
     </fieldset>
 
     <div class="actions">
       <button type="button" class="secondary" onclick={() => dialog.close()}>Cancel</button>
-      <button type="submit" disabled={duplicate}>Generate</button>
+      <button type="submit" disabled={duplicate || tooSmall}>Generate</button>
     </div>
   </form>
 </dialog>
@@ -143,6 +192,10 @@
     display: flex;
     flex-wrap: wrap;
     gap: 0.35rem;
+  }
+
+  .chip.unavailable:not(.active) {
+    opacity: 0.55;
   }
 
   .custom {
