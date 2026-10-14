@@ -6,3 +6,5 @@ public/bundle.css
 public/bundle.js.map
 public/bundle.css.map
 .wrangler/
+test-results/
+playwright-report/

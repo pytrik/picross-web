@@ -279,6 +279,7 @@
               class:cursor={focused && i === cursor && hover === null}
               style:background={filled ? palette[v - 1] : undefined}
               aria-label={cellLabel(i)}
+              data-v={v}
             ></div>
           {/each}
         </div>

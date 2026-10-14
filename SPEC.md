@@ -70,7 +70,13 @@ On solve:
 - Board becomes read-only (X marks and unknown cells render as empty; filled
   cells stay).
 - A dialog shows: size, colors, elapsed time, number of mistake checks used,
-  and actions **New puzzle** / **Close**.
+  and three actions:
+  - **Close**: dismiss, keep looking at the solved board.
+  - **New puzzle…**: opens the same settings dialog as the header button.
+  - **Play another**: immediately generates a new puzzle with the solved
+    puzzle's size and palette (which may differ from the saved settings when
+    the puzzle came from a shared link) and the saved density (density is not
+    part of a definition). Saved settings are not changed.
 - State is persisted as solved; reopening the link shows the solved board.
 
 ---
@@ -440,14 +446,15 @@ domain MAY be added later.
 
 Triggered on push of tags `v*.*.*`. Actions on their current Node 24 majors (checkout v7, setup-node v7, upload-artifact v7, download-artifact v8, action-gh-release v3).
 
-1. **build**: `npm ci` → `npm run check` → `npm test` → `npm run build` →
-   upload `dist/`.
+1. **build**: `npm ci` → tag must equal `v` + `package.json` version →
+   `npm run check` → `npm test` → `npm run build` → Playwright e2e against
+   the build (report uploaded on failure) → upload `dist/`.
 2. **deploy**: `npx wrangler deploy` with secrets `CLOUDFLARE_API_TOKEN`
    (scope: "Edit Cloudflare Workers") and `CLOUDFLARE_ACCOUNT_ID`.
 3. **release**: zip `index.html` + `LICENSE` + `README.md` as
    `picross-web-<tag>.zip` → GitHub Release with generated notes.
 
-Local: `npm run deploy` = build + `wrangler deploy`.
+This workflow is the **only** deploy path; there is no local deploy script.
 
 ### 10.7 Testing
 
@@ -462,6 +469,15 @@ coverage:
   validated definitions.
 - completion-hint logic.
 - LRU eviction.
+
+End-to-end: Playwright Test (`tests/e2e/`, `npm run e2e`) against the
+production `dist/index.html`, served by `scripts/serve.mjs`, using the system
+Google Chrome (`channel: 'chrome'`). Desktop project plus a Pixel 7 mobile
+project for tests tagged `@mobile`. Any console error fails a test. Covers
+input (click, right-click, drag + axis lock, keyboard), undo/redo, reload
+persistence, mistake check, solving + win dialog actions, multi-color, Back
+navigation, restart, invalid links, palette validation, `file://` offline use,
+and mobile layout/touch. Cells expose `data-v` (board value) for tests.
 
 ### 10.8 Versioning
 

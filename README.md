@@ -40,7 +40,12 @@ npm run check      # type check (svelte-check)
 npm test           # unit tests (node --test)
 npm run build      # → dist/index.html (single file, open it directly)
 npm run build:debug
+npm run e2e        # build, then Playwright end-to-end tests
 ```
+
+The e2e tests (`tests/e2e/`) run against the production build using your
+installed Google Chrome (`channel: 'chrome'`), so no Playwright browser
+download is needed. `npx playwright test --ui` is handy while writing tests.
 
 Built with Svelte 5 + TypeScript and a small custom esbuild pipeline
 (`scripts/build.mjs`) that inlines all JS and CSS into one HTML file.
@@ -51,26 +56,24 @@ TypeScript stays on 6.x until `svelte-check` supports 7.
 Hosted on Cloudflare Workers static assets (`wrangler.jsonc`, serves
 `dist/`).
 
-**Release (normal path):** bump the version in `package.json` and the header,
-commit, then:
+Deploys happen **only** from GitHub Actions; there is no local deploy path
+and no need to be logged in to wrangler.
+
+**Release:** bump `"version"` in `package.json` (the header reads it at build
+time), commit, then tag that exact version:
 
 ```bash
 git tag vX.Y.Z && git push origin vX.Y.Z
 ```
 
-The GitHub Actions workflow type-checks, tests, builds, runs `wrangler deploy`,
-and attaches `picross-web-vX.Y.Z.zip` (the offline `index.html`) to a GitHub
-Release.
+The workflow checks the tag matches `package.json`, type-checks, runs unit
+and e2e tests, builds, runs `wrangler deploy`, and attaches
+`picross-web-vX.Y.Z.zip` (the offline `index.html`) to a GitHub Release. If
+any check fails nothing is deployed; the Playwright report is uploaded as a
+workflow artifact.
 
 Repository secrets required: `CLOUDFLARE_API_TOKEN` ("Edit Cloudflare
 Workers" template) and `CLOUDFLARE_ACCOUNT_ID`.
-
-**Manual deploy:**
-
-```bash
-npx wrangler login   # once
-npm run deploy       # build + wrangler deploy
-```
 
 ## Roadmap
 

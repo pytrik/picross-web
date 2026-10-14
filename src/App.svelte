@@ -14,6 +14,7 @@
   import { defaultStorage } from './lib/state/storage.ts';
   import { formatTime } from './lib/ui/format.ts';
   import { generateInWorker } from './lib/workers/generate.ts';
+  import type { GenerateOptions } from './lib/puzzle/generator.ts';
 
   const storage = defaultStorage();
   let settings = $state<Settings>(loadSettings(storage));
@@ -66,17 +67,25 @@
     if (document.visibilityState === 'visible') next.resume();
   }
 
-  async function newPuzzle(replace: boolean, opts: Settings = settings) {
+  const optionsFrom = (s: Settings): GenerateOptions => ({
+    width: s.width,
+    height: s.height,
+    palette: effectivePalette(s),
+    density: s.density,
+  });
+
+  /** Options of the last generation attempt, so Retry repeats it. */
+  let lastOpts: GenerateOptions | null = null;
+
+  async function newPuzzle(replace: boolean, opts: GenerateOptions = optionsFrom(settings)) {
+    lastOpts = opts;
     genAbort?.abort();
     const ctrl = new AbortController();
     genAbort = ctrl;
     generating = true;
     genError = '';
     try {
-      const def = await generateInWorker(
-        { width: opts.width, height: opts.height, palette: effectivePalette(opts), density: opts.density },
-        ctrl.signal,
-      );
+      const def = await generateInWorker(opts, ctrl.signal);
       const puzzle = fromDefinition(def);
       // pushState/replaceState don't fire hashchange, so no double load.
       if (replace) history.replaceState(null, '', `#${puzzle.hash}`);
@@ -108,7 +117,18 @@
 
   function generate(next: Settings) {
     settings = next;
-    newPuzzle(false, next);
+    newPuzzle(false, optionsFrom(next));
+  }
+
+  /**
+   * Same size and colors as the current puzzle (which may have come from a
+   * shared link, so not necessarily the saved settings). Density isn't part
+   * of a puzzle definition, so the saved density is used.
+   */
+  function playAnother() {
+    if (!game) return;
+    const { width, height, palette } = game.def;
+    newPuzzle(false, { width, height, palette, density: settings.density });
   }
 
   // --- actions ---------------------------------------------------------------
@@ -211,7 +231,7 @@
 <header>
   <h1>Picross <span class="version">v{__APP_VERSION__}</span></h1>
   <nav>
-    <button onclick={() => newDialog.open()}>New puzzle</button>
+    <button onclick={() => newDialog.open()}>New puzzle…</button>
     <button class="secondary" onclick={share} disabled={!game}>Share</button>
     <button
       class="secondary"
@@ -286,7 +306,7 @@
       <p>{genError}</p>
       <div class="actions">
         <button class="secondary" onclick={() => (genError = '')}>Close</button>
-        <button onclick={() => newPuzzle(false)}>Retry</button>
+        <button onclick={() => newPuzzle(false, lastOpts ?? undefined)}>Retry</button>
       </div>
     </div>
   </div>
@@ -312,10 +332,18 @@
     <div class="actions">
       <button class="secondary" onclick={() => winDialog.close()}>Close</button>
       <button
+        class="secondary"
         onclick={() => {
           winDialog.close();
-          newPuzzle(false);
-        }}>New puzzle</button
+          newDialog.open();
+        }}>New puzzle…</button
+      >
+      <button
+        title="Same size and colors"
+        onclick={() => {
+          winDialog.close();
+          playAnother();
+        }}>Play another</button
       >
     </div>
   {/if}
