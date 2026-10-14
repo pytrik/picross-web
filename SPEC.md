@@ -29,7 +29,8 @@ Implemented (0.4.0):
 - Assists (§6.5), zoom & pan (§6.7), recent puzzles (§6.8), options and themes
   (§8).
 
-Implemented since 0.4.0: Hint (§6.9), difficulty rating (§5.5).
+Implemented since 0.4.0: Hint (§6.9), difficulty rating (§5.5),
+picture-like grids (§5.6).
 
 Still to do: the other features in §1.3. With those, everything except database
 puzzles keeps working offline from the single file; database puzzles and the
@@ -80,7 +81,7 @@ by unit and e2e tests (§10.7) and documented in README.md.
   default Any) that the generator meets, within the 10 s budget (§5.2) at the
   worst case. On timeout the existing error + **Retry** applies.
 
-**Picture-like grids**
+**Picture-like grids** (done: §5.6)
 
 - The New puzzle dialog gets a style option: Random (today's behaviour,
   default), Symmetric (mirror symmetry), and Smooth (fewer isolated cells,
@@ -286,26 +287,32 @@ version") and generate a fresh puzzle via `replaceState`.
 | Per-swatch override | color input per swatch | — |
 | Fill density | 0.40–0.75 (only with difficulty Any) | 0.58 |
 | Difficulty | Any, Easy, Medium, Hard (§5.5) | Any |
+| Style | Random, Symmetric, Smooth (§5.6) | Random |
 
 Last-used options persist (§7.3).
 
 ### 5.2 Algorithm
 
-1. **Seed grid.** Each cell is filled with probability `density`. Filled cells
-   get a color. For `N > 1`, colors SHOULD be spatially coherent rather than
-   per-cell noise: pick `N` random seed points and assign each filled cell the
-   color of its nearest seed (Voronoi). A finished grid that does not use every
-   color is discarded and generation restarts from step 1.
+1. **Seed grid.** Each cell is filled with probability `density` (shaped by
+   the style, §5.6). Filled cells get a color. For `N > 1`, colors SHOULD be
+   spatially coherent rather than per-cell noise: pick `N` distinct random
+   *filled* cells as seed points and assign each filled cell the color of its
+   nearest seed (Voronoi). Seeding at filled cells means every color starts
+   with at least one cell. A finished grid that does not use every color is
+   discarded and generation restarts from step 1.
 2. **Line-solve** (§5.3) from an empty board using only clues.
 3. If fully solved → done (the result is unique and needs no guessing).
-4. Otherwise **repair**: pick a random cell the solver left undetermined, flip
-   it in the solution (empty↔filled; for filled cells pick a color per rule 1),
-   re-validate, and go to step 2. Repeat up to `maxRepairs = W*H`.
+4. Otherwise **repair**: pick a cell the solver left undetermined (at random,
+   or as the style prefers), flip it in the solution (empty↔filled; for
+   filled cells pick a color per rule 1), together with its mirror images for
+   Symmetric, re-validate, and go to step 2. Repeat up to `maxRepairs = W*H`.
 5. If repairs run out, restart from step 1. Give up after a time budget
    (default 10 s) and show an error with a **Retry** button.
 6. With a target difficulty (§5.5), each attempt draws its seed density from
    the target's band instead of the slider, and a puzzle whose rating isn't
    the target is discarded (restart from step 1, same time budget).
+7. The style (§5.6) is best effort: after a third of the time budget without
+   a result, the remaining attempts use Random.
 
 Generation MUST run off the main thread (Web Worker, §10.3) and the UI MUST show
 a spinner + **Cancel**.
@@ -344,6 +351,39 @@ light and dark themes and for common color-vision deficiencies where possible):
 
 The user MAY override individual swatches. Duplicate colors MUST be prevented
 (the generate button is disabled with a hint).
+
+### 5.6 Grid styles
+
+The New puzzle dialog picks a style (default Random); it is saved with the
+other options (§7.3) and used by **Play another**. Style only shapes the seed
+grid and the repairs (§5.2 steps 1 and 4). Uniqueness, line-solvability,
+every color used, the density, the target difficulty and the time budget
+always hold. Implemented in `lib/puzzle/styles.ts`.
+
+- **Random**: each cell filled with probability `density` (the original
+  behaviour).
+- **Symmetric**: each attempt picks a mirror at random: left-right,
+  top-bottom, or both. A cell and its mirror images (its *orbit*) always
+  hold the same value: the seed fills whole orbits, the Voronoi color seeds
+  lie in the part every orbit starts in (so mirrored cells share a color),
+  and a repair flips the whole orbit.
+- **Smooth**: blob-like shapes with few isolated cells. Noise at `density`
+  gets two majority passes (a cell becomes filled if most of its 3×3 window
+  is, ties unchanged), then is grown at the blob edges (empty cells with the
+  most filled neighbours first) or shrunk (filled cells with the fewest) back
+  to exactly `density`. Repairs prefer *smoothing* flips: a filled cell with
+  mostly empty 4-neighbours, or an empty cell with mostly filled ones.
+  Measured: under 1% of filled cells isolated (no filled 4-neighbour) vs.
+  about 10% for Random.
+
+**Fallback.** Blob shapes have long runs and large overlaps, so Smooth
+puzzles rate Easy far more often than Random ones. Smooth + Hard is rare on
+large boards with many colors and practically never happens on thin boards
+(e.g. 0 in 100 at 5×30 with 6 colors). Rather than give up, generation
+switches to Random after a third of the time budget (§5.2 step 7), so
+"uniqueness wins" also covers difficulty. When that happens the app says so:
+"Couldn't keep the Smooth style at this size and difficulty; this puzzle is
+Random."
 
 ### 5.5 Difficulty rating
 
@@ -609,7 +649,8 @@ picross:settings  →  JSON last-used generator options (§5.1) + UI prefs
 ```
 
 Generator options include `difficulty` (`any` | `easy` | `medium` | `hard`;
-anything else loads as `any`).
+anything else loads as `any`) and `style` (`random` | `symmetric` |
+`smooth`; anything else loads as `random`).
 
 UI prefs: `theme` (§8), `showErrors` (default `true`) and `autoX` (default
 `false`) (§6.5). Missing or non-boolean values fall back to the defaults.
@@ -627,7 +668,8 @@ Unsolved boards with zero progress are not stored.
 - **Header**: app name, version, **New puzzle…** (opens the dialog),
   **Recent…** (§6.8), **Share**, **Options…**.
 - **New puzzle panel** (dialog): size presets + custom W/H, color count,
-  palette preset, swatch overrides, difficulty (§5.5), density, **Generate**.
+  palette preset, swatch overrides, style (§5.6), difficulty (§5.5),
+  density, **Generate**.
 - **Options** (dialog): theme radio buttons (Auto / Light / Dark), and
   checkboxes "Flag impossible lines" (`showErrors`) and "Auto-X finished
   lines" (`autoX`) (§6.5). Changes apply immediately and persist.
@@ -702,6 +744,7 @@ src/
       hint.ts           next hint, wrong cells (§6.9)
       generator.ts      seed + repair loop (§5.2), target difficulty
       rating.ts         difficulty rating, area caps, density bands (§5.5)
+      styles.ts         grid styles: seeding, mirror orbits, repair choice (§5.6)
       palettes.ts       presets (§5.4)
     workers/
       generate.worker.ts  worker entry
@@ -789,6 +832,12 @@ modules (`*.svelte.ts`) are compiled on the fly by a Node loader hook
   limits and on thin boards.
 - rating: round count, Unrated for non-line-solvable puzzles, area caps,
   density bands.
+- styles: Symmetric output is mirrored and all three modes occur; Smooth has
+  at most half of Random's isolated-cell share at about the same density;
+  every style meets every target (allowing the Random fallback).
+- Time budget: `npm run bench` (`scripts/bench-generator.ts`, not part of
+  `npm test`) generates every style × target × color count at 30×30 and 5×30,
+  density 0.40, and fails on a timeout, a wrong rating or a run over 10 s.
 - completion-hint logic; line feasibility.
 - hint: line choice and tie-breaks, wrong marks, stuck, partial facts
   (repeated hints solve generated multi-color puzzles, always with the
@@ -809,6 +858,7 @@ input (click, right-click, drag + axis lock, keyboard), undo/redo, reload
 persistence, mistake check, hint (fill + highlight + undo, wrong marks,
 stuck, count on win), difficulty (area gating, density disabled, toolbar +
 win dialog, persisted target, Play another keeps it, Unrated in Recent),
+style (Symmetric output mirrored, choice persisted),
 solving + win dialog actions, multi-color, Back
 navigation, restart, invalid links, palette validation, `file://` offline use,
 screen-reader labels and grid structure, pre-paint theme, options (line

@@ -11,7 +11,8 @@ import {
   unpackValues,
 } from './codec.ts';
 import { boardSatisfies, completedRuns, computeClues, lineClue } from './clues.ts';
-import { generatePuzzle, mulberry32 } from './generator.ts';
+import { generate, generatePuzzle, mulberry32 } from './generator.ts';
+import { isolatedShare } from './styles.ts';
 import { findHint } from './hint.ts';
 import { DENSITY_BANDS, ratePuzzle, solveRounds } from './rating.ts';
 import { fnv1a64 } from './key.ts';
@@ -302,4 +303,73 @@ test('density bands lie inside the slider range and do not overlap', () => {
   const bands = Object.values(DENSITY_BANDS).sort((a, b) => a[0] - b[0]);
   assert.ok(bands[0]![0] >= 0.4 && bands.at(-1)![1] <= 0.75);
   for (let i = 1; i < bands.length; i++) assert.ok(bands[i - 1]![1] < bands[i]![0]);
+});
+
+// --- styles (SPEC §5.6) ------------------------------------------------------
+
+const mirrored = (def: PuzzleDef) => {
+  const { width: w, height: h, cells } = def;
+  const at = (x: number, y: number) => cells[y * w + x];
+  let lr = true;
+  let tb = true;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (at(x, y) !== at(w - 1 - x, y)) lr = false;
+      if (at(x, y) !== at(x, h - 1 - y)) tb = false;
+    }
+  }
+  return { lr, tb };
+};
+
+test('symmetric puzzles mirror left-right, top-bottom or both, and keep every guarantee', () => {
+  const rng = mulberry32(21);
+  const seen = new Set<string>();
+  for (let i = 0; i < 30; i++) {
+    const [width, height] = [[10, 10], [7, 12], [15, 9]][i % 3]!;
+    const colors = 1 + (i % 6);
+    const result = generate({ width, height, palette: PALETTE.slice(0, colors), density: 0.55, style: 'symmetric' }, rng)!;
+    assert.equal(result.style, 'symmetric');
+    const { lr, tb } = mirrored(result.def);
+    assert.ok(lr || tb, 'mirror symmetric');
+    seen.add(`${lr}/${tb}`);
+    assert.equal(solveGrid(computeClues(result.def), width, height, colors).solved, true);
+  }
+  assert.equal(seen.size, 3, 'all three mirror modes occur');
+});
+
+test('smooth puzzles have far fewer isolated cells than random ones, at about the same density', () => {
+  const rng = mulberry32(22);
+  const stats = (style: 'random' | 'smooth') => {
+    let iso = 0;
+    let density = 0;
+    for (let i = 0; i < 20; i++) {
+      const colors = 1 + (i % 6);
+      const def = generatePuzzle({ width: 15, height: 15, palette: PALETTE.slice(0, colors), density: 0.5, style }, rng)!;
+      assert.equal(solveGrid(computeClues(def), 15, 15, colors).solved, true);
+      iso += isolatedShare(15, 15, def.cells) / 20;
+      density += def.cells.filter(Boolean).length / 225 / 20;
+    }
+    return { iso, density };
+  };
+  const random = stats('random');
+  const smooth = stats('smooth');
+  assert.ok(smooth.iso <= random.iso / 2, `isolated ${smooth.iso} vs ${random.iso}`);
+  assert.ok(Math.abs(smooth.density - 0.5) < 0.1, `density ${smooth.density}`);
+});
+
+test('every style meets every target difficulty (style may fall back to Random)', () => {
+  const rng = mulberry32(23);
+  for (const style of ['symmetric', 'smooth'] as const) {
+    for (const difficulty of ['easy', 'medium', 'hard'] as const) {
+      const result = generate({ width: 12, height: 13, palette: PALETTE.slice(0, 3), density: 0.58, difficulty, style }, rng);
+      assert.ok(result, `${style} ${difficulty}`);
+      assert.equal(ratePuzzle(result.def), difficulty);
+      assert.ok(result.style === style || result.style === 'random');
+    }
+  }
+});
+
+test('isolatedShare counts filled cells without a filled 4-neighbour', () => {
+  assert.equal(isolatedShare(3, 3, [1, 0, 1, 0, 0, 0, 1, 1, 0]), 2 / 4);
+  assert.equal(isolatedShare(2, 2, [0, 0, 0, 0]), 0);
 });

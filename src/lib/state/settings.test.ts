@@ -30,6 +30,7 @@ test('out-of-range and wrong-typed values are clamped or replaced', () => {
       showErrors: 'yes',
       autoX: 1,
       difficulty: 'brutal',
+      style: 'cubist',
     }),
   );
   assert.equal(s.width, 30);
@@ -77,4 +78,9 @@ test('color names are distinct for every preset', () => {
 test('difficulty target loads when valid', () => {
   assert.equal(loadSettings(storageWith({ difficulty: 'hard' })).difficulty, 'hard');
   assert.equal(loadSettings(storageWith({ difficulty: 'brutal' })).difficulty, 'any');
+});
+
+test('style loads when valid', () => {
+  assert.equal(loadSettings(storageWith({ style: 'smooth' })).style, 'smooth');
+  assert.equal(loadSettings(storageWith({ style: 'cubist' })).style, 'random');
 });

@@ -21,14 +21,15 @@ no guessing.
 - Undo/redo, clue completion hints, impossible-line warnings, optional
   auto-X for finished lines, a run counter while dragging, mistake checks,
   hints, Easy/Medium/Hard ratings with a difficulty choice for new puzzles,
+  symmetric or smooth picture-like styles,
   timer, keyboard play, touch support with pinch-zoom, and light/dark theme.
 
 **Play it at <https://picross-web.pytrik.workers.dev>**, or download the
 offline `index.html` from the [latest release](https://github.com/pytrik/picross-web/releases/latest).
 
-Full behaviour is specified in [SPEC.md](SPEC.md). The road to 1.0.0
-(picture-like puzzles, a puzzle editor and a curated puzzle library) is in
-its §1.3, with the definition of done in §1.4.
+Full behaviour is specified in [SPEC.md](SPEC.md). The road to 1.0.0 (a
+puzzle editor and a curated puzzle library) is in its §1.3, with the
+definition of done in §1.4.
 
 ## How to play
 
@@ -60,7 +61,10 @@ filled cells match the clue.
 Every puzzle is rated Easy, Medium or Hard by how long the chain of logical
 steps is. In **New puzzle…** you can ask for a difficulty (Medium needs a
 board of at least 75 cells, Hard at least 150); that picks the fill density
-for you.
+for you. You can also pick a style: Random, Symmetric (mirrored left-right,
+top-bottom or both) or Smooth (blob-like shapes). Smooth puzzles are rarely
+hard; if a combination can't be made in time you get a Random one, and the
+app tells you.
 
 Stuck? **Hint** fills in one cell that logic can deduce from your marks and
 highlights the row or column that proves it. If you've made a mistake, it
@@ -78,6 +82,7 @@ npm test           # unit tests (node --test; *.svelte.ts compiled by a loader h
 npm run build      # → dist/index.html (single file, open it directly)
 npm run build:debug
 npm run e2e        # build, then Playwright end-to-end tests
+npm run bench      # generator time budget, every style × difficulty (minutes)
 ```
 
 The e2e tests (`tests/e2e/`) run against the production build using your

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { PALETTES, paletteById } from '../lib/puzzle/palettes.ts';
+  import { STYLES, STYLE_LABELS } from '../lib/puzzle/styles.ts';
   import { DENSITY_BANDS, DIFFICULTIES, MIN_AREA, RATING_LABELS, difficultyAllowed } from '../lib/puzzle/rating.ts';
   import { MAX_COLORS, MAX_SIZE, MIN_SIZE } from '../lib/puzzle/types.ts';
   import { DEFAULT_SETTINGS, MAX_DENSITY, MIN_DENSITY, effectivePalette, type Settings } from '../lib/state/settings.ts';
@@ -103,6 +104,22 @@
         {/if}
       </div>
       {#if duplicate}<p class="error">Each color must be different.</p>{/if}
+    </fieldset>
+
+    <fieldset>
+      <legend>Style</legend>
+      <div class="chips" role="radiogroup" aria-label="Style">
+        {#each STYLES as style (style)}
+          <button
+            type="button"
+            class="chip"
+            role="radio"
+            aria-checked={draft.style === style}
+            class:active={draft.style === style}
+            onclick={() => (draft.style = style)}>{STYLE_LABELS[style]}</button
+          >
+        {/each}
+      </div>
     </fieldset>
 
     <fieldset>

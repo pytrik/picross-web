@@ -1,6 +1,7 @@
 import { MAX_COLORS, MAX_SIZE, MIN_SIZE } from '../puzzle/types.ts';
 import { paletteById, PALETTES } from '../puzzle/palettes.ts';
 import type { Target } from '../puzzle/rating.ts';
+import { STYLES, type Style } from '../puzzle/styles.ts';
 import { readJson, writeJson, type KV } from './storage.ts';
 
 export type Theme = 'system' | 'light' | 'dark';
@@ -16,6 +17,8 @@ export interface Settings {
   density: number;
   /** Target difficulty (SPEC §5.5); anything but 'any' overrides density. */
   difficulty: Target;
+  /** Grid style (SPEC §5.6). */
+  style: Style;
   theme: Theme;
   /** Tint clues of lines that can no longer fit (SPEC §6.5). */
   showErrors: boolean;
@@ -31,6 +34,7 @@ export const DEFAULT_SETTINGS: Settings = {
   overrides: [],
   density: 0.58,
   difficulty: 'any',
+  style: 'random',
   theme: 'system',
   showErrors: true,
   autoX: false,
@@ -56,6 +60,7 @@ export function loadSettings(storage: KV | null): Settings {
       : [],
     density: clamp(s.density, MIN_DENSITY, MAX_DENSITY, d.density),
     difficulty: s.difficulty === 'easy' || s.difficulty === 'medium' || s.difficulty === 'hard' ? s.difficulty : 'any',
+    style: STYLES.includes(s.style as Style) ? (s.style as Style) : 'random',
     theme: s.theme === 'light' || s.theme === 'dark' ? s.theme : 'system',
     showErrors: typeof s.showErrors === 'boolean' ? s.showErrors : d.showErrors,
     autoX: typeof s.autoX === 'boolean' ? s.autoX : d.autoX,

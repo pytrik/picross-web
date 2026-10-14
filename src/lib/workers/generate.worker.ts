@@ -1,14 +1,15 @@
-import { generatePuzzle, type GenerateOptions } from '../puzzle/generator.ts';
+import { generate, type GenerateOptions } from '../puzzle/generator.ts';
+import type { Style } from '../puzzle/styles.ts';
 
 export type WorkerReply =
-  | { ok: true; width: number; height: number; palette: string[]; cells: Uint8Array }
+  | { ok: true; width: number; height: number; palette: string[]; cells: Uint8Array; style: Style }
   | { ok: false; error: string };
 
 self.onmessage = (event: MessageEvent<GenerateOptions>) => {
   let reply: WorkerReply;
   try {
-    const def = generatePuzzle(event.data);
-    reply = def ? { ok: true, ...def } : { ok: false, error: 'timeout' };
+    const result = generate(event.data);
+    reply = result ? { ok: true, ...result.def, style: result.style } : { ok: false, error: 'timeout' };
   } catch (err) {
     reply = { ok: false, error: String(err) };
   }

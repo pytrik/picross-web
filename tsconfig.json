@@ -27,6 +27,7 @@
   "include": [
     "src/**/*",
     "tests/**/*",
+    "scripts/**/*.ts",
     "playwright.config.ts"
   ],
   "exclude": [

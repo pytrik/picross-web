@@ -17,9 +17,15 @@ file holds the non-obvious things learned while building it.
   fails if the tag doesn't match `package.json`.
 - Right after a deploy, Cloudflare's edge can serve the previous HTML for a
   short while. That is not a failed deploy; retry before debugging.
-- When touching the generator, check it still fits the 10 s budget at the
-  worst case (30×30, density 0.40, **1 color** is slowest; ~2–5 s at the time
-  of writing, almost all of it failed repair walks, not solver speed).
+- When touching the generator, run `npm run bench` (a few minutes): every
+  style × target × color count at 30×30 and 5×30 must stay under 10 s. The
+  slowest case is Random/Any at density 0.40 with **1 color** (~2–5 s), almost
+  all of it failed repair walks, not solver speed.
+- Sample before tuning: difficulty is driven almost entirely by density, and
+  Smooth shapes are intrinsically easy (hence the style fallback, SPEC §5.6).
+  Voronoi color seeds sit on filled cells inside the symmetric fundamental
+  region; seeding anywhere else made Symmetric/Smooth with 6 colors discard
+  most attempts for unused colors.
 
 ## Gotchas
 

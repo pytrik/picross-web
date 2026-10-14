@@ -12,7 +12,8 @@
     "build:debug": "node scripts/build.mjs --debug",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "test": "node --import ./tests/register-svelte.mjs --test \"src/**/*.test.ts\"",
-    "e2e": "npm run build && playwright test"
+    "e2e": "npm run build && playwright test",
+    "bench": "node scripts/bench-generator.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1",

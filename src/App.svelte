@@ -11,6 +11,7 @@
   import { parseHash } from './lib/puzzle/codec.ts';
   import type { LineRef } from './lib/puzzle/hint.ts';
   import { RATING_LABELS } from './lib/puzzle/rating.ts';
+  import { STYLE_LABELS } from './lib/puzzle/styles.ts';
   import { MARK_X } from './lib/puzzle/types.ts';
   import { fromDefinition, resolvePuzzle, type LoadedPuzzle } from './lib/source/index.ts';
   import { Game } from './lib/state/game.svelte.ts';
@@ -90,6 +91,7 @@
     palette: effectivePalette(s),
     density: s.density,
     difficulty: s.difficulty,
+    style: s.style,
   });
 
   /** Options of the last generation attempt, so Retry repeats it. */
@@ -103,12 +105,16 @@
     generating = true;
     genError = '';
     try {
-      const def = await generateInWorker(opts, ctrl.signal);
+      const { def, style } = await generateInWorker(opts, ctrl.signal);
       const puzzle = fromDefinition(def);
       // pushState/replaceState don't fire hashchange, so no double load.
       if (replace) history.replaceState(null, '', `#${puzzle.hash}`);
       else history.pushState(null, '', `#${puzzle.hash}`);
       setGame(puzzle);
+      const wanted = opts.style ?? 'random';
+      if (style !== wanted) {
+        showToast(`Couldn’t keep the ${STYLE_LABELS[wanted]} style at this size and difficulty; this puzzle is ${STYLE_LABELS[style]}.`);
+      }
     } catch (err) {
       if (!(err instanceof DOMException && err.name === 'AbortError')) {
         genError = 'Could not generate a puzzle with these settings in time.';
@@ -144,13 +150,14 @@
   /**
    * Same size, colors and difficulty as the current puzzle (which may have
    * come from a shared link, so not necessarily the saved settings). An
-   * unrated puzzle falls back to the saved density.
+   * unrated puzzle falls back to the saved density. Style isn't part of a
+   * definition, so the saved style is used.
    */
   function playAnother() {
     if (!game) return;
     const { width, height, palette } = game.def;
     const difficulty = game.rating === 'unrated' ? 'any' : game.rating;
-    newPuzzle(false, { width, height, palette, density: settings.density, difficulty });
+    newPuzzle(false, { width, height, palette, density: settings.density, difficulty, style: settings.style });
   }
 
   // --- actions ---------------------------------------------------------------

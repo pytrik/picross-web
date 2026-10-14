@@ -1,4 +1,4 @@
-import { boardValues, cell, cells, clickCell, expect, gotoPuzzle, openNewPuzzleDialog, solve, test } from './helpers.ts';
+import { boardValues, cell, cells, clickCell, currentPuzzle, expect, gotoPuzzle, openNewPuzzleDialog, solve, test } from './helpers.ts';
 
 const X = 255;
 
@@ -278,4 +278,30 @@ test('difficulty: gated by area, sets density, shown in toolbar and win dialog, 
   await expect(level('Hard')).toHaveAttribute('aria-checked', 'true');
   await level('Any').click();
   await expect(density).toBeEnabled();
+});
+
+test('style: Symmetric generates a mirror-symmetric puzzle and is remembered', async ({ page }) => {
+  await gotoPuzzle(page, ['11111', '.....', '..2..', '.....', '.....']);
+  await openNewPuzzleDialog(page);
+  const dialog = page.locator('dialog.new-puzzle');
+  await dialog.getByRole('button', { name: '10×10', exact: true }).click();
+  await dialog.getByRole('radio', { name: 'Symmetric' }).click();
+  const before = page.url();
+  await dialog.getByRole('button', { name: 'Generate' }).click();
+  await expect(page).not.toHaveURL(before);
+
+  const { width: w, height: h, cells: grid } = await currentPuzzle(page);
+  const at = (x: number, y: number) => grid[y * w + x];
+  let lr = true;
+  let tb = true;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      lr &&= at(x, y) === at(w - 1 - x, y);
+      tb &&= at(x, y) === at(x, h - 1 - y);
+    }
+  }
+  expect(lr || tb).toBe(true);
+
+  await openNewPuzzleDialog(page);
+  await expect(dialog.getByRole('radio', { name: 'Symmetric' })).toHaveAttribute('aria-checked', 'true');
 });

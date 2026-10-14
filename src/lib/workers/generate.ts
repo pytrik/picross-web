@@ -1,6 +1,5 @@
 import workerSource from './generate.worker.ts?worker';
-import { generatePuzzle, type GenerateOptions } from '../puzzle/generator.ts';
-import type { PuzzleDef } from '../puzzle/types.ts';
+import { generate, type GenerateOptions, type Generated } from '../puzzle/generator.ts';
 import type { WorkerReply } from './generate.worker.ts';
 
 export class GenerateError extends Error {}
@@ -12,7 +11,7 @@ let workerUrl: string | null = null;
  * timeout, or an AbortError when `signal` aborts (the worker is terminated).
  * Falls back to the main thread if workers are unavailable.
  */
-export function generateInWorker(opts: GenerateOptions, signal?: AbortSignal): Promise<PuzzleDef> {
+export function generateInWorker(opts: GenerateOptions, signal?: AbortSignal): Promise<Generated> {
   let worker: Worker;
   try {
     workerUrl ??= URL.createObjectURL(new Blob([workerSource], { type: 'text/javascript' }));
@@ -20,8 +19,8 @@ export function generateInWorker(opts: GenerateOptions, signal?: AbortSignal): P
   } catch {
     return new Promise((resolve, reject) => {
       setTimeout(() => {
-        const def = generatePuzzle(opts);
-        if (def) resolve(def);
+        const result = generate(opts);
+        if (result) resolve(result);
         else reject(new GenerateError('timeout'));
       });
     });
@@ -37,7 +36,10 @@ export function generateInWorker(opts: GenerateOptions, signal?: AbortSignal): P
       signal?.removeEventListener('abort', abort);
       worker.terminate();
       const reply = event.data;
-      if (reply.ok) resolve({ width: reply.width, height: reply.height, palette: reply.palette, cells: reply.cells });
+      if (reply.ok) {
+        const { width, height, palette, cells, style } = reply;
+        resolve({ def: { width, height, palette, cells }, style });
+      }
       else reject(new GenerateError(reply.error));
     };
     worker.onerror = (event) => {
