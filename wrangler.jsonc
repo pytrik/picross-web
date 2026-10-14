@@ -1,0 +1,11 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "picross-web",
+  "compatibility_date": "2026-10-14",
+  // Assets-only Worker: serves dist/ (which holds just index.html). Puzzles
+  // route via the URL hash, so no SPA fallback is needed. A Worker script
+  // (`main`) can be added later for the puzzle database API (SPEC §11).
+  "assets": {
+    "directory": "./dist"
+  }
+}

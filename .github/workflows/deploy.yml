@@ -1,0 +1,96 @@
+name: Deploy and Release
+
+# Tag a commit `vX.Y.Z` and push the tag to trigger this:
+#   git tag v0.1.0 && git push origin v0.1.0
+# It type-checks, tests and builds dist/index.html, deploys it to Cloudflare
+# Workers (static assets), and attaches a zipped copy to a GitHub Release.
+#
+# Requires repository secrets CLOUDFLARE_API_TOKEN ("Edit Cloudflare Workers"
+# template) and CLOUDFLARE_ACCOUNT_ID.
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - run: npm run check
+
+      - run: npm test
+
+      - run: npm run build
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: build-output
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: build-output
+          path: dist
+
+      - name: Deploy to Cloudflare
+        run: npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            LICENSE
+            README.md
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: build-output
+          path: dist
+
+      - name: Package release zip
+        run: |
+          mkdir -p release
+          cp dist/index.html LICENSE README.md release/
+          cd release
+          zip ../picross-web-${{ github.ref_name }}.zip *
+
+      - uses: softprops/action-gh-release@v3
+        with:
+          generate_release_notes: true
+          files: picross-web-${{ github.ref_name }}.zip
