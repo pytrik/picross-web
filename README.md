@@ -1,5 +1,11 @@
 # Picross Web
 
+> **AI disclosure:** this app was built mainly by AI. Essentially all of the
+> code, tests and documentation were written by
+> [Claude Opus](https://www.anthropic.com/claude) in
+> [Claude Code](https://claude.com/claude-code), working from my requirements;
+> I made the design decisions, reviewed the output and tested it.
+
 A browser nonogram (picross) game with randomly generated, **multi-color**
 puzzles. Every puzzle has a unique solution you can reach by logic alone, with
 no guessing.
