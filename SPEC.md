@@ -2,7 +2,7 @@
 
 Status: **v1 in progress**: 0.6.0 is live at
 <https://picross-web.pytrik.workers.dev>; database puzzles (§1.3) are
-still to do. v1 is finished when §1.4 is met, and ships as
+specified (§11) but not implemented yet. v1 is finished when §1.4 is met, and ships as
 **1.0.0**.
 This document is the source of truth for behaviour. When the code and this spec disagree, one of them is a bug.
 
@@ -33,7 +33,7 @@ Implemented (0.5.0):
   picture-like grid styles (§5.6), added in 0.5.0.
 - Puzzle editor (§6.10), added in 0.6.0.
 
-Still to do: database puzzles (§1.3). With those,
+Still to do: database puzzles (§1.3, specified in §11). With those,
 everything except database puzzles keeps working offline from the single
 file; database puzzles and the Library need the network (§11).
 
@@ -108,7 +108,7 @@ database puzzles.
   produces keeps the §1.1 guarantee.
 - One unfinished draft is kept in `localStorage`. The editor works offline.
 
-**Database puzzles** (to do)
+**Database puzzles** (specified: §11; to do)
 
 - Curated puzzles live in the repository (format defined in §11), each with an
   id and a title. CI MUST validate every one (§4.1) and require it to be
@@ -169,6 +169,8 @@ v1 is finished, and 1.0.0 is tagged, when all of these hold:
 | **Hint** | The toolbar action that fills in one deducible cell (§6.9). Not to be confused with clue dimming (§6.5). |
 | **Clue dimming** | Fading clue runs the marks already complete (§6.5). |
 | **Draft** | The puzzle being drawn in the editor (§6.10). Saved locally, never a link itself. |
+| **Library** | The curated database puzzles (§11), opened by `#id=` links or the Library dialog. |
+| **Library order** | Rating, then area, then title (§11.2): the order of the Library dialog and of Next in library. |
 
 ---
 
@@ -207,7 +209,8 @@ On solve:
     the saved settings when the puzzle came from a shared link). An unrated
     puzzle uses target Any with the saved density (density is not part of a
     definition). The style is the saved one (§5.6; style isn't part of a
-    definition either). Saved settings are not changed.
+    definition either). Saved settings are not changed. For a library
+    puzzle this button is **Next in library** instead (§11.8.1).
 - State is persisted as solved; reopening the link shows the solved board.
 
 ---
@@ -263,8 +266,8 @@ Bit packing:
 
 Size budget: 30×30 with 6 colors = 338 bytes → 451 chars of data. Acceptable.
 
-Other hash keys: `#edit` opens the puzzle editor (§6.10); `#id=<string>` is
-reserved for DB puzzles (§11). Unknown
+Other hash keys: `#edit` opens the puzzle editor (§6.10); `#id=<id>` opens a
+library puzzle (§11.5). Unknown
 format versions MUST be treated as invalid, not guessed at.
 
 The app MUST produce canonical hashes (lowercase hex, no padding) so that equal
@@ -278,6 +281,7 @@ definitions produce equal strings.
 | Load with no hash | Generate with last-used settings (§8), then `history.replaceState` the hash (no extra history entry). |
 | User generates a puzzle (**Generate** in the New puzzle dialog, or **Play another**) | Generate, then `history.pushState` the hash (creates a history entry, so Back returns to the previous puzzle; pushState does not fire `hashchange`, so no double load). |
 | `hashchange` event (Back/Forward, pasted link) | Load the new puzzle; the old one's progress is already persisted. A generation still in flight is cancelled, so it cannot replace the puzzle being navigated to. |
+| Load / `hashchange` with `#id=<id>` | Fetch the library puzzle and show it, with fallbacks for offline and removed puzzles (§11.6). |
 | **Editor…**, or load / `hashchange` with `#edit` | Show the puzzle editor (§6.10); **Editor…** uses `history.pushState`. The puzzle being played stays loaded (paused) so Back returns to it without reloading. |
 
 ### 4.4 Invalid hash
@@ -348,7 +352,7 @@ Standard multi-color line solver:
   generator bug (assert).
 
 The same solver is reused by tests, line errors (§6.5), the hint (§6.9), the
-difficulty rating (§5.5), and the planned editor (§1.3).
+difficulty rating (§5.5), the editor (§6.10), and the Library checks (§11.1).
 
 ### 5.4 Palette presets
 
@@ -574,7 +578,8 @@ Hovering/focusing a cell highlights its row and column and their clues
 newest first. Each entry shows a thumbnail of the player's own board (never
 the solution; X and unknown both render as blank paper), the size, color
 count, difficulty (§5.5), status (Solved / In progress), elapsed time, and
-when it was last played. Activating an entry navigates to its hash (a normal history entry, so
+when it was last played; library puzzles also show their title and open by
+`#id=` (§11.8). Activating an entry navigates to its hash (a normal history entry, so
 Back returns). The current puzzle is marked "Current". Each entry except the
 current one has a **Delete** button that removes its stored progress.
 
@@ -723,7 +728,8 @@ picross:p:<puzzleKey>  →  JSON
 ```
 
 `hash` was added in 0.4.0 and `hints` in 0.5.0; readers MUST accept records
-without them.
+without them. Library puzzles add `def` and `title` (§11.7), and their
+`hash` is `id=<id>`.
 `board` packing uses `bits = ceil(log2(N + 2))`. Writes are debounced (~300 ms)
 and flushed on `pagehide`/`visibilitychange:hidden`.
 
@@ -774,7 +780,7 @@ record (bad size, palette, cell data) loads as a new empty draft.
 ## 8. UI layout
 
 - **Header**: app name, version, **New puzzle…** (opens the dialog),
-  **Recent…** (§6.8), **Editor…** (§6.10), **Share**, **Options…**.
+  **Library…** (§11.8), **Recent…** (§6.8), **Editor…** (§6.10), **Share**, **Options…**.
 - **Editor toolbar** (§6.10, replaces the play toolbar): color swatches +
   Erase, undo, redo, clear, zoom −/+; **Grid…**, **Copy puzzle**,
   **Check**, **Play**, **Share**, **Close**; and the status line.
@@ -785,7 +791,8 @@ record (bad size, palette, cell data) loads as a new empty draft.
   checkboxes "Flag impossible lines" (`showErrors`) and "Auto-X finished
   lines" (`autoX`) (§6.5). Changes apply immediately and persist.
 - **Toolbar**: color swatches + X tool, undo, redo, check, hint, restart, zoom
-  −/+ (§6.7), difficulty (§5.5), timer, "Solved" badge.
+  −/+ (§6.7), title of a library puzzle (§11.6), difficulty (§5.5), timer,
+  "Solved" badge.
 - **Board**: column clues on top (stacked bottom-aligned), row clues on the
   left (right-aligned), grid with a thicker rule every 5 cells.
 - Cell size is computed to fit the viewport (min 14 px, max 40 px), then
@@ -833,6 +840,8 @@ record (bad size, palette, cell data) loads as a new empty draft.
   append ", undetermined" to their label and Check announces the count via
   the toast. Disabled Play/Share are explained by the status line next to
   them.
+- Library (§11.12): entries' accessible names carry title, size, colors,
+  rating and status; status is never conveyed by color alone.
 - Everything reachable by keyboard; nothing relies on hover alone.
 
 ---
@@ -860,6 +869,7 @@ src/
     RecentDialog.svelte   recent puzzles list + thumbnails (§6.8)
     EditorView.svelte     editor toolbar, status, board (§6.10)
     GridFields.svelte     size, colors, palette fields (New puzzle, Grid…)
+    LibraryDialog.svelte  library list + status (§11.8, planned)
   lib/
     puzzle/             pure logic, no DOM/Svelte
       types.ts          PuzzleDef, Clue, constants
@@ -884,13 +894,21 @@ src/
       history.ts        undo/redo stack
       storage.ts        safe localStorage access
     source/
-      index.ts          resolvePuzzle(hash) → LoadedPuzzle (§11)
+      index.ts          resolvePuzzle(hash) → LoadedPuzzle (p=, id= §11.5)
+    library/            (§11, planned)
+      puzzle-file.ts    puzzles/*.json parsing + validation (§11.1)
+      client.ts         API fetch, parsing, local cache (§11.6, §11.7)
+      library.ts        Library status and order, Next in library (§11.8)
     ui/
       format.ts         time/date format, contrast, color names
       zoom.ts           zoom limits and scroll anchoring (§6.7)
+  worker/               (§11, planned) index.ts (Worker entry), api.ts (handleApi)
   styles/global.css
 scripts/                build.mjs, dev.mjs, inline-worker.mjs, serve.mjs,
-                        bench-generator.ts (npm run bench, §10.7)
+                        bench-generator.ts (npm run bench, §10.7),
+                        puzzles-sql.ts, puzzle-add.ts (§11, planned)
+puzzles/                curated puzzle files (§11.1, planned)
+migrations/             D1 schema (§11.3, planned)
 tests/                  e2e/ (Playwright), Node hooks for *.svelte.ts
 ```
 
@@ -924,7 +942,8 @@ thread. No extra files are emitted.
 }
 ```
 
-No Worker script yet (assets-only); database puzzles (§1.3) add one. Hash-based routing means no SPA fallback
+No Worker script yet (assets-only); database puzzles add one plus D1
+(§11.10). Hash-based routing means no SPA fallback
 is needed. Served at <https://picross-web.pytrik.workers.dev>; a custom domain
 MAY be added later.
 
@@ -941,6 +960,8 @@ Triggered on push of tags `v*.*.*`. Actions on their current Node 24 majors (che
    `picross-web-<tag>.zip` → GitHub Release with generated notes.
 
 This workflow is the **only** deploy path; there is no local deploy script.
+Database puzzles add the D1 migration and load steps before `wrangler
+deploy` (§11.10).
 
 `.github/workflows/ci.yml` runs the same checks (minus the tag guard, deploy
 and release) on every branch push and pull request, with no secrets.
@@ -985,6 +1006,8 @@ modules (`*.svelte.ts`) are compiled on the fly by a Node loader hook
   check, restart, loading saved progress, Hint (undo step, counting,
   persistence, legacy records without `hints`).
 
+Database puzzles add the tests listed in §11.11.
+
 End-to-end: Playwright Test (`tests/e2e/`, `npm run e2e`) against the
 production `dist/index.html`, served by `scripts/serve.mjs`, using the system
 Google Chrome (`channel: 'chrome'`). Desktop project plus a Pixel 7 mobile
@@ -1012,21 +1035,344 @@ Version kept in sync in `package.json`, the header UI, and the git tag
 
 ---
 
-## 11. Database puzzles (to be specified; design constraints so far)
+## 11. Database puzzles
 
-Requirements are in §1.3. Until this section is written in full, the code
-keeps these doors open:
+Status: **specified, not implemented yet.** Requirements are in §1.3.
 
-- **`PuzzleSource` abstraction**: `resolve(hash): Promise<PuzzleDef>`. Today
-  only `p=` is implemented (local decode). `id=` will fetch
-  `GET /api/puzzles/<id>` from a Worker (same project, `main` added to
-  `wrangler.jsonc`, D1 for storage) returning
-  `{ id, title, width, height, palette, cells: "<base64url as §4.2>" }`.
-- The palette is part of the definition, so DB puzzles carry their own colors.
-- The puzzle key scheme already distinguishes `id:<id>`.
-- `resolve` is async from day one, even though `p=` is synchronous inside.
-- Curated puzzles must be line-solvable (§1.3), hence unique. The win check
-  (§3.2) is implemented as clue satisfaction anyway, which is equivalent for
-  unique puzzles and safe if that ever changes.
-- The single-file build stays usable offline for `p=` links; `id=` links
-  need the network.
+A *Library* of curated puzzles, maintained in the repository, loaded into a
+Cloudflare D1 database by the deploy workflow, served read-only by a Worker,
+and opened through `#id=<id>` links or the **Library…** dialog. Everything
+else keeps working without the network (§11.9).
+
+```
+puzzles/<id>.json ──(npm test: validate)──┐
+        │                                 │
+        └─(deploy: SQL)─► D1 ─► Worker /api/puzzles ─► app (#id=, Library…)
+                                                        └─ localStorage cache (§11.7)
+```
+
+### 11.1 Puzzle files
+
+One file per puzzle: `puzzles/<id>.json`. The id is the file name without
+`.json`.
+
+```json
+{
+  "title": "Heart",
+  "palette": ["#d94040"],
+  "rows": [
+    ".11.11.",
+    "1111111",
+    "1111111",
+    ".11111.",
+    "..111..",
+    "...1..."
+  ]
+}
+```
+
+| Field | Rule |
+|---|---|
+| id (file name) | `^[a-z0-9]+(-[a-z0-9]+)*$`, at most 40 characters |
+| `title` | 1–40 characters, no control characters, no leading/trailing whitespace; plain text (never rendered as HTML) |
+| `palette` | 1–6 colors, lowercase `#rrggbb`, as §4.1 |
+| `rows` | `H` strings of `W` characters each; `.` = empty, `1`–`6` = palette index |
+
+`W` and `H` are implied by `rows`. No other fields are allowed (a typo'd
+field fails instead of being ignored). The file is the whole definition;
+everything else (rating, order, encoded cells) is derived.
+
+**Validation** (`src/lib/library/puzzle-file.ts`, run over every file by a
+unit test, so `npm test` enforces it in CI and in the deploy workflow):
+
+- the shape above, and the definition passes §4.1 validation;
+- the line solver (§5.3) determines every cell from an empty board (hence
+  unique; such a puzzle is never Unrated);
+- titles are unique, case-insensitively;
+- there are at least 10 puzzles, covering every rating (Easy, Medium, Hard)
+  and both single- and multi-color puzzles.
+
+**Adding a puzzle.** Draw it in the editor (§6.10), **Share**, then
+`npm run puzzle:add -- <id> "<title>" "<p= link>"`, which decodes the link
+(full URL or bare `p=` hash), refuses an existing id, and writes the file in
+the format above (canonical key order, two-space indent, trailing newline).
+Files may also be written or edited by hand.
+
+**Changing a puzzle.** Titles can change freely. A changed grid or palette
+is allowed; players who had progress on the old version get it reset
+(§11.7). Removing a file removes the puzzle from the Library (§11.6 covers
+links to it). Ids are never reused for a different picture.
+
+### 11.2 Library order and rating
+
+Each puzzle's rating is computed with §5.5 when the SQL is generated
+(§11.3). The **Library order** is: rating (Easy, Medium, Hard), then area
+`W × H` ascending, then title (case-insensitive), then id. It is stored as
+`sort` so the Worker needs no sorting logic.
+
+### 11.3 Database
+
+D1 database `picross-web`, binding `DB`. Schema by migration
+(`migrations/0001_puzzles.sql`, applied with `wrangler d1 migrations apply`):
+
+```sql
+CREATE TABLE puzzles (
+  id      TEXT PRIMARY KEY,
+  title   TEXT NOT NULL,
+  width   INTEGER NOT NULL,
+  height  INTEGER NOT NULL,
+  palette TEXT NOT NULL,   -- "d94040-3070d0": the <PALETTE> part of §4.2
+  cells   TEXT NOT NULL,   -- the <DATA> part of §4.2 (base64url, no padding)
+  rating  TEXT NOT NULL,   -- "easy" | "medium" | "hard"
+  sort    INTEGER NOT NULL -- position in Library order (§11.2), from 0
+);
+```
+
+Later schema changes are new numbered migrations and MUST be additive
+(the old Worker keeps running until the new one is deployed).
+
+**Loading.** `npm run puzzles:sql` (`scripts/puzzles-sql.ts`) validates all
+files (§11.1) and writes `.build/puzzles.sql`:
+
+1. one `INSERT … ON CONFLICT(id) DO UPDATE SET …` per puzzle, then
+2. `DELETE FROM puzzles WHERE id NOT IN (…all ids…)`.
+
+String values are emitted as SQL literals with `'` doubled; ids, colors and
+cells are restricted to safe alphabets by validation anyway. Upsert-then-
+delete keeps the table usable at every step without relying on a
+transaction. Only this file, executed by the deploy workflow (§11.8),
+writes to the database.
+
+### 11.4 API
+
+A Worker script (`src/worker/index.ts`, `main` in `wrangler.jsonc`) serves
+the API next to the static assets. Requests that match an asset (only
+`/` and `/index.html`) never reach it. The request handling is a pure
+function, `handleApi(request, store)` (`src/worker/api.ts`), over a
+`PuzzleStore` interface (`list()`, `get(id)`) with two implementations: D1
+(production) and the `puzzles/` files (dev server and e2e, §11.10).
+
+| Request | Response |
+|---|---|
+| `GET /api/puzzles` | `200` `{ "v": 1, "puzzles": [Summary, …] }` in Library order |
+| `GET /api/puzzles/<id>` | `200` `{ "v": 1, …Puzzle }`, or `404` if unknown or not a valid id |
+| `HEAD` of the above | as `GET`, no body |
+| other method on `/api/…` | `405`, `Allow: GET, HEAD` |
+| any other path | `404` |
+
+```ts
+interface Summary {
+  id: string; title: string;
+  width: number; height: number;
+  palette: string[];            // "#rrggbb", as §4.1
+  rating: 'easy' | 'medium' | 'hard';
+}
+interface Puzzle {
+  id: string; title: string;
+  width: number; height: number;
+  palette: string[];
+  cells: string;                // base64url bit-packed grid, as §4.2 <DATA>
+}
+```
+
+- Errors are JSON `{ "error": "not_found" | "method_not_allowed" |
+  "server_error" }`. A D1 failure is a `500` and is logged
+  (`console.error`), never shown raw to the client.
+- `Content-Type: application/json; charset=utf-8`. Successful responses
+  carry `Cache-Control: public, max-age=300`; errors `no-store`.
+- Queries are prepared statements with bound parameters.
+- No CORS headers: the API is same-origin only. The `file://` build does
+  not call it (§11.9).
+
+The app treats every response as untrusted: wrong `v`, missing fields, or a
+definition failing §4.1 count as a failed request (§11.6).
+
+### 11.5 Hash and puzzle key
+
+`#id=<id>`, with the id syntax of §11.1. A malformed id is an invalid link
+(§4.4). The puzzle key is `id:<id>` (§7.2); the canonical hash body stored
+in progress records is `id=<id>`. `resolvePuzzle` (`src/lib/source/`)
+handles both `p=` and `id=`; the library client (fetching, parsing, caching)
+is `src/lib/library/client.ts`.
+
+### 11.6 Opening an `id=` link
+
+On load or `hashchange` to `#id=<id>`, a generation in flight is cancelled
+(as §4.3) and the app shows "Loading puzzle…" in the board area while it
+requests `GET /api/puzzles/<id>` (10 s timeout; a further `hashchange`
+aborts the request). Then:
+
+| Result | Cached copy (§11.7) | Behaviour |
+|---|---|---|
+| `200`, valid | — | Play it. If a cached copy exists with a different definition, progress is reset (§11.7). |
+| `404` | yes | Play the cached copy; notice "This puzzle has been removed from the library; playing your saved copy." |
+| `404` | no | Notice "This library puzzle doesn't exist (any more)." and generate a fresh puzzle via `replaceState`, as §4.4. |
+| network error, timeout, `5xx`, invalid response, or `file://` | yes | Play the cached copy; notice "Couldn't reach the library; playing your saved copy." |
+| same | no | **Unavailable panel** (below). |
+
+The **unavailable panel** replaces the board: "Couldn't load this library
+puzzle. You may be offline." (from `file://`: "Library puzzles need the
+online version: https://picross-web.pytrik.workers.dev") with **Retry**
+(not shown for `file://`) and **New puzzle…**. The hash stays, so Retry
+and a later reload can still succeed. The play toolbar is hidden;
+the header works as usual.
+
+A library puzzle plays like any other (progress, timer, assists, hint,
+Recent, Share copies the `#id=` link, the editor's **Copy puzzle**), plus:
+
+- its **title** is shown in the toolbar (before the difficulty) and as the
+  heading of the win dialog, and the page title becomes
+  "<title> · Picross";
+- the win dialog replaces **Play another** with **Next in library**
+  (§11.8.1).
+
+### 11.7 Local cache and changed puzzles
+
+Progress records of library puzzles (§7.1) add two fields:
+
+```
+"hash": "id=heart",
+"def": "p=1.7x6.d94040.…",   // canonical p= hash body of the definition played
+"title": "Heart"
+```
+
+`def` is the local copy of the definition: it lets Recent (§6.8) draw and
+rate the entry, and lets the puzzle open without the network (§11.6). Since
+unsolved puzzles without marks are not stored (§7.3), only puzzles the
+player has touched are cached. Records for `p=` puzzles don't have these
+fields; readers MUST accept records with or without them. The record stays
+at `"v": 1`.
+
+**Changed definition.** When a fetched definition's canonical `p=` body
+differs from the record's `def`, the stored progress belongs to another
+picture: the record is replaced by a fresh one (empty board, time, checks
+and hints zero, not solved) and the notice "This puzzle was changed since
+you last played it; your progress was reset." is shown. A different title
+only updates `title`. A record of an `id=` puzzle without `def` (cannot be
+written by any release, but MAY exist from tests) is treated like a changed
+definition.
+
+### 11.8 Library dialog
+
+**Library…** in the header (between **New puzzle…** and **Recent…**)
+opens a dialog that requests `GET /api/puzzles` each time it opens (the
+browser cache, §11.4, absorbs repeats) and shows "Loading library…"
+meanwhile.
+
+Each puzzle is one entry, in Library order:
+
+- title;
+- size ("15×15") and colors (swatches plus "3 colors", or "1 color");
+- rating (§5.5);
+- the player's status from local storage only: **Solved** (record with
+  `solved`), **In progress** (any other record), or **Not started** (no
+  record);
+- the current puzzle is marked "Current".
+
+No thumbnails: they would give away the picture. Above the list, a summary:
+"5 of 12 solved". Activating an entry navigates to its `#id=` hash (a normal
+history entry, as Recent). On failure the dialog shows "The library isn't
+available right now. You may be offline." with **Retry**, or from `file://`
+the same link text as §11.6 and no Retry. Nothing else in the app is
+affected.
+
+Recent puzzles (§6.8) lists library puzzles like the others, with their
+title, and opens them by `#id=`.
+
+#### 11.8.1 Next in library
+
+In the win dialog of a library puzzle, **Next in library** opens the first
+puzzle after the solved one in Library order, wrapping around, that isn't
+solved locally. It uses the list last fetched in this session, fetching it
+when the dialog opens if there is none. While the list is loading the
+button is disabled; if the list can't be fetched or every puzzle is solved,
+the button is hidden, and in the latter case the dialog says "You've solved
+every puzzle in the library!". **Close** and **New puzzle…** are unchanged.
+
+### 11.9 Offline
+
+- The single file needs nothing for `p=` puzzles, generation and the editor.
+- From `file://` the app never calls the API: the library client fails
+  immediately with the `file://` messages above. (A file opened from disk
+  would otherwise need CORS, and its localStorage is separate from the
+  site's anyway.)
+- Over http(s) the API is fetched normally; failures follow §11.6 and §11.8.
+  `navigator.onLine` is not consulted (it is unreliable); the request
+  decides.
+
+### 11.10 Development and hosting
+
+`wrangler.jsonc` gains:
+
+```jsonc
+"main": "src/worker/index.ts",
+"d1_databases": [{
+  "binding": "DB",
+  "database_name": "picross-web",
+  "database_id": "<from the one-time setup>",
+  "migrations_dir": "migrations"
+}]
+```
+
+`assets` is unchanged and `dist/` still contains only `index.html`; wrangler
+bundles the Worker itself.
+
+- **One-time setup** (maintainer, Cloudflare dashboard): create the D1
+  database `picross-web`, put its id in `wrangler.jsonc`, and give the
+  `CLOUDFLARE_API_TOKEN` secret the "D1: Edit" permission in addition to
+  "Edit Cloudflare Workers". Wrangler stays logged out locally.
+- **Dev server and e2e**: `scripts/dev.mjs` and `scripts/serve.mjs` answer
+  `/api/` with `handleApi` over the file store, reading `puzzles/` (or the
+  directory in `PUZZLES_DIR`), so no wrangler or D1 is needed locally. E2E
+  uses a fixed fixture set (`tests/e2e/fixtures/puzzles/`), independent of
+  the curated set.
+- **Types**: the Worker is type-checked with its own
+  `tsconfig.worker.json` (Workers types, no DOM), run by `npm run check`
+  alongside `svelte-check`.
+
+**Deploy** (§10.6) changes: the build job also runs `npm run puzzles:sql`
+and uploads `.build/puzzles.sql` with `dist/`. The deploy job then runs, in
+order, stopping at the first failure:
+
+1. `npx wrangler d1 migrations apply picross-web --remote`
+2. `npx wrangler d1 execute picross-web --remote --file .build/puzzles.sql`
+3. `npx wrangler deploy`
+
+So the data is in place before a Worker that may need it; a failed load
+leaves the previous Worker and assets serving.
+
+### 11.11 Testing
+
+Unit (`npm test`):
+
+- puzzle files: every file in `puzzles/` passes §11.1; the validator rejects
+  bad ids, titles, palettes, ragged rows, unknown characters and fields,
+  duplicate titles, and non-line-solvable grids; `puzzle:add` round-trips a
+  `p=` link.
+- SQL generation: Library order (§11.2), quoting, upsert + delete.
+- `handleApi` over an in-memory store: list and order, get, `404` for
+  unknown and malformed ids, `405`, `HEAD`, headers, store failure → `500`.
+- library client: response parsing and rejection of invalid responses,
+  timeout and abort, `file://` short-circuit.
+- `resolvePuzzle` for `id=`: every row of the §11.6 table, changed
+  definition resets progress, title change keeps it.
+- progress records with `def`/`title`, Library status, Next in library
+  (order, skipping solved, wrap, all solved).
+
+E2E (against the fixture set): Library dialog (entries, status after
+playing and solving, Current, open by click and keyboard), `id=` link (title
+in toolbar, win dialog and page title, reload keeps progress, Back), Recent
+shows and opens a library puzzle, Next in library, Share copies `#id=`,
+offline via `page.route` (cached copy notice, unavailable panel and Retry,
+Library failure), `404`, changed definition reset, `file://` messages,
+accessible names, and the Library dialog on mobile.
+
+### 11.12 Accessibility
+
+- Library entries are buttons in a list; the accessible name carries
+  everything shown: "Heart, 7 by 6, 1 color, Easy, Solved" (plus
+  ", current"). Status is text, never color alone.
+- Loading, the unavailable panel's message and every notice above go
+  through the `role="status"` toast or a live region; the unavailable panel
+  moves focus to **Retry** (or **New puzzle…**).
+- The toolbar title is plain text; the win dialog is labelled by it.

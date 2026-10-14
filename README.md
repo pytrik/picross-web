@@ -32,7 +32,8 @@ offline `index.html` from the [latest release](https://github.com/pytrik/picross
 
 Full behaviour is specified in [SPEC.md](SPEC.md). The road to 1.0.0 is in
 its §1.3: still to come is a curated puzzle library (`#id=…` links served
-by a Worker + D1). The definition of done is §1.4.
+by a Worker + D1), specified in §11 but not built yet. The definition of
+done is §1.4.
 
 ## How to play
 
