@@ -1,0 +1,51 @@
+name: CI
+
+# Type-check, unit tests, build and e2e tests on every branch push and pull
+# request. Tag pushes are handled by deploy.yml (which runs the same checks
+# before deploying). Uses no secrets, so it is safe for fork PRs.
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch/PR supersedes the running check.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - run: npm run check
+
+      - run: npm test
+
+      - run: npm run build
+
+      # Uses the runner's preinstalled Google Chrome (channel: 'chrome').
+      - name: E2E tests
+        run: npx playwright test
+        env:
+          CI: true
+
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            playwright-report
+            test-results
+          retention-days: 14

@@ -53,6 +53,9 @@ The e2e tests (`tests/e2e/`) run against the production build using your
 installed Google Chrome (`channel: 'chrome'`), so no Playwright browser
 download is needed. `npx playwright test --ui` is handy while writing tests.
 
+CI (`.github/workflows/ci.yml`) runs the type check, unit tests, build and e2e
+tests on every branch push and pull request.
+
 Built with Svelte 5 + TypeScript and a small custom esbuild pipeline
 (`scripts/build.mjs`) that inlines all JS and CSS into one HTML file.
 TypeScript stays on 6.x until `svelte-check` supports 7.

@@ -456,6 +456,9 @@ Triggered on push of tags `v*.*.*`. Actions on their current Node 24 majors (che
 
 This workflow is the **only** deploy path; there is no local deploy script.
 
+`.github/workflows/ci.yml` runs the same checks (minus the tag guard, deploy
+and release) on every branch push and pull request, with no secrets.
+
 ### 10.7 Testing
 
 `node --test` running `*.test.ts` directly (Node 24 type stripping). Required
