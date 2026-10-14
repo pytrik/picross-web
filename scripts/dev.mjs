@@ -1,10 +1,16 @@
 import * as esbuild from 'esbuild';
 import sveltePlugin from 'esbuild-svelte';
 import sveltePreprocess from 'svelte-preprocess';
+import { inlineWorker } from './inline-worker.mjs';
+import { readFileSync as readPkg } from 'fs';
+
+const { version } = JSON.parse(readPkg('package.json', 'utf-8'));
 
 const ctx = await esbuild.context({
   entryPoints: ['src/main.ts'],
   bundle: true,
+  // Shown in the header; keep in sync with the git tag (see README).
+  define: { __APP_VERSION__: JSON.stringify(version) },
   outdir: 'public',
   format: 'iife',
   sourcemap: true,
@@ -14,6 +20,7 @@ const ctx = await esbuild.context({
     js: `(() => { const es = new EventSource("/esbuild"); es.onmessage = () => location.reload(); })();`,
   },
   plugins: [
+    inlineWorker({ minify: false }),
     sveltePlugin({
       preprocess: sveltePreprocess(),
       compilerOptions: { css: 'injected', dev: true },

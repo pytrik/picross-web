@@ -1,6 +1,10 @@
 import * as esbuild from 'esbuild';
 import sveltePlugin from 'esbuild-svelte';
 import sveltePreprocess from 'svelte-preprocess';
+import { inlineWorker } from './inline-worker.mjs';
+import { readFileSync as readPkg } from 'fs';
+
+const { version } = JSON.parse(readPkg('package.json', 'utf-8'));
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
 
 const debug = process.argv.includes('--debug');
@@ -8,6 +12,8 @@ const debug = process.argv.includes('--debug');
 await esbuild.build({
   entryPoints: ['src/main.ts'],
   bundle: true,
+  // Shown in the header; keep in sync with the git tag (see README).
+  define: { __APP_VERSION__: JSON.stringify(version) },
   // Intermediates go to .build/ so dist/ holds only the final index.html
   // (that whole folder is what gets published).
   outfile: '.build/bundle.js',
@@ -20,6 +26,7 @@ await esbuild.build({
   minifyIdentifiers: !debug,
   minifySyntax: !debug,
   plugins: [
+    inlineWorker({ minify: !debug }),
     sveltePlugin({
       preprocess: sveltePreprocess(),
       compilerOptions: { css: 'injected' },

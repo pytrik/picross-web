@@ -1,8 +1,40 @@
 :root {
   --bg: #faf9f6;
+  --surface: #ffffff;
   --fg: #1c1c1c;
+  --muted: #6b6b6b;
+  --border: #d4d2cc;
   --accent: #4338ca;
+  --danger: #dc2626;
+  --success: #16a34a;
+  --cell-bg: #ffffff;
+  --grid-line: #d9d6cf;
+  --grid-strong: #6f6c66;
+  --hl: rgba(67, 56, 202, 0.09);
+  --x: #8a8780;
+  color-scheme: light;
   font-family: system-ui, -apple-system, sans-serif;
+}
+
+/* Must stay in sync with the `bg` values in App.svelte (clue contrast). */
+:root[data-theme='dark'] {
+  --bg: #17191d;
+  --surface: #23262c;
+  --fg: #e8e6e1;
+  --muted: #9a9890;
+  --border: #3d4048;
+  --accent: #8b85ff;
+  --danger: #f87171;
+  --success: #22a35a;
+  /* The grid stays a dimmed light "paper" in dark mode: puzzle colors are
+     fixed by the puzzle, and dark ones (e.g. Classic #222222) must stay
+     visible. */
+  --cell-bg: #cfcdc7;
+  --grid-line: #b3b1ab;
+  --grid-strong: #5f5d58;
+  --hl: rgba(67, 56, 202, 0.16);
+  --x: #6b6964;
+  color-scheme: dark;
 }
 
 * {
@@ -15,12 +47,6 @@ body {
   color: var(--fg);
 }
 
-main {
-  max-width: 40rem;
-  margin: 0 auto;
-  padding: 2rem;
-}
-
 button {
   font: inherit;
   padding: 0.4rem 0.8rem;
@@ -31,18 +57,59 @@ button {
   cursor: pointer;
 }
 
+button.secondary,
+button.chip {
+  background: var(--surface);
+  color: var(--fg);
+  border-color: var(--border);
+}
+
+button.chip.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+button.link {
+  background: none;
+  border: none;
+  color: var(--accent);
+  padding: 0.2rem;
+  text-decoration: underline;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 input {
   font: inherit;
   padding: 0.4rem 0.6rem;
-  border: 1px solid #ccc;
+  border: 1px solid var(--border);
   border-radius: 0.4rem;
+  background: var(--surface);
+  color: var(--fg);
+}
+
+input[type='range'] {
+  padding: 0;
+  accent-color: var(--accent);
 }
 
 dialog {
   border: none;
   border-radius: 0.6rem;
   padding: 1.5rem;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  background: var(--surface);
+  color: var(--fg);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
+  max-width: calc(100vw - 2rem);
+  max-height: calc(100vh - 2rem);
 }
 
 dialog::backdrop {

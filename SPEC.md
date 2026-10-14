@@ -348,7 +348,9 @@ Unsolved boards with zero progress are not stored.
 - Light/dark theme follows `prefers-color-scheme`, overridable and persisted.
 - Clue text color: the run's palette color; when contrast with the background
   is too low (WCAG < 3:1) the number is drawn on a chip of that color with
-  auto black/white text.
+  auto black/white text. Single-color puzzles use the normal text color.
+- In dark theme the grid cells stay a dimmed light "paper" (`#cfcdc7`): puzzle
+  colors are fixed by the definition, and dark ones must remain visible.
 - X marks: thin diagonal cross in a muted color.
 - Use the scaffold's `<dialog>` helpers instead of native `alert`/`confirm`.
 
@@ -405,9 +407,11 @@ tested.
 
 ### 10.3 Web Worker in a single file
 
-The build bundles `generate.worker.ts` separately (esbuild, IIFE) and injects
-the result as a string constant (esbuild `define` or a virtual module). At
-runtime the worker is created from a `Blob` URL. No extra files are emitted.
+`scripts/inline-worker.mjs` is an esbuild plugin: `import src from
+'./generate.worker.ts?worker'` bundles the worker separately (IIFE) and yields
+it as a string. At runtime the worker is created from a `Blob` URL (works from
+`file://` too); if workers are unavailable, generation falls back to the main
+thread. No extra files are emitted.
 
 ### 10.4 Build output
 
